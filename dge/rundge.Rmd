@@ -1,0 +1,177 @@
+---
+title: "Examining global gene expression in DFT1 and DFT2 cells"
+author: "Mark Ziemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    fig_width: 5
+    fig_height: 5
+theme: cosmo
+---
+
+Source codes: TBA
+
+```{r,pkg}
+
+suppressPackageStartupMessages({
+    library("reshape2")
+    library("gplots")
+    library("DESeq2")
+    library("mitch")
+    library("limma")
+    library("kableExtra")
+    library("dplyr")
+})
+
+```
+
+## Background
+
+The goal of our study is to compare the expression of genes related to metabolism of DFT1 cell lines to
+DFT2 cell lines.
+Our main goal is comparing genes expressed in the following pathways: Glycolysis, Pentose Phosphate
+Pathway, Fatty Acid Metabolism, Glutaminolysis and Oxidative Phosphorylation.
+A secondary goal would be to compare the expression of genes related to the production of Reactive
+Oxygen Species (ROS) and protection against ROS (genes involved in DNA repair, production of
+antioxydants etc).
+Finally, we might also be interested in looking into genes linked to cholesterol metabolism as this has
+been shown to be important for DFT1 but I need to do some additional reading to know what exactly we're
+after.
+See sample sheet below (edited from Yin Peng), there are 3 DFT1 and 3 DFT2 cell lines, and 3 replicates
+of each cell line:
+
+```{r,ss1}
+
+ss <- read.table("ss.tsv",sep="\t",fill=TRUE,header=TRUE)
+
+ss %>%
+  kbl(caption="Sample sheet for all samples") %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+We are mainly interested in comparing all DFT1samples against all DFT2 samples.
+However, we did notice that some cell lines within a same DFT produced different results in the
+metabolism experiments so we might need to compare all 6 cell lines against one another and not be
+able to simply do a DFT1 vs DFT2 contrast, if that makes sense.
+
+Regarding the reference transcriptome, we will use Ensembl v109.
+
+
+## Functions
+
+
+## Load data
+
+Here we load the data in from the aligner.
+
+```{r,import}
+
+tmp <- read.table("../fastq/3col.tsv.gz")
+x <- as.data.frame(acast(tmp, V2~V1, value.var="V3"))
+colnames(x) <- gsub("fastq/","",colnames(x))
+dim(x)
+
+```
+
+## Quality control
+
+Samples with <1M reads should be omitted.
+Will also round values to integers.
+
+```{r,qc1}
+
+cs <- colSums(x)
+cs <- cs[order(cs)]
+
+barplot(cs,ylim=c(1e2,2e7),log="y",main="All samples")
+barplot(head(cs),log="y",main="Samples with low reads")
+
+abline(h=1e6,col="red",lty=2)
+x <- x[,colSums(x)>1e6]
+x <- round(x)
+
+```
+
+## MDS
+
+This will help us to visualise the sources of variability in the overall dataset.
+
+```{r,plotmds1}
+
+plotMDS(x)
+
+```
+
+## DESeq2
+
+Run a differential analysis comparing DFT1 vs DFT2.
+
+```{r,de1}
+
+ss1 <- ss[which(grepl("Wild",ss$Category) + grepl("Captive",ss$Category)>0),]
+ss1 <- ss1[ss1$Sample %in% colnames(x),]
+dim(ss1)
+x1 <- x[,which(colnames(x) %in% ss1$Sample)]
+dim(x1)
+x1 <- x1[which(rowMeans(x1)>10),]
+dim(x1)
+
+col <- as.character(as.numeric(grepl("Cap",ss1$Category)))
+col <- gsub("0","lightgreen",col)
+col <- gsub("1","lightblue",col)
+
+mds <- plotMDS(x1,pch=19,cex=3,col=col,main="MDS plot: wild and captive devils")
+mtext("wild=green, captive=blue")
+text(mds,labels=colnames(x1),cex=0.7)
+
+# coding captive
+ss1$captive <- grepl("Cap",ss1$Category)
+
+dds <- DESeqDataSetFromMatrix(countData = x1 , colData = ss1, design = ~ captive )
+res <- DESeq(dds)
+z<- results(res)
+vsd <- vst(dds, blind=FALSE,nsub=nrow(x1)-50)
+zz<-cbind(as.data.frame(z),assay(vsd))
+dge<-as.data.frame(zz[order(zz$pvalue),])
+dge1 <- dge
+sig <- subset(dge,padj<0.05)
+sig1_up <- rownames(subset(sig,log2FoldChange>0))
+sig1_dn <- rownames(subset(sig,log2FoldChange<0))
+length(sig1_up)
+length(sig1_dn)
+
+```
+
+```{r,de1viz}
+
+maplot(dge1,"wild vs captive devils")
+
+make_volcano(dge1,"wild vs captive devils")
+
+sig[1:50,1:6] %>%
+  kbl(caption="Comparison of wild vs captive devils") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(dge,file="dge1.tsv",sep="\t")
+
+mx <- sig[,7:ncol(sig)]
+mx <- head(mx,30)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(as.matrix(mx),trace="none",scale="row",
+  col=colfunc(25),ColSideColors=col,mar=c(5,12))
+
+```
+
+## Session information
+
+For reproducibility.
+
+```{r,session}
+
+sessionInfo()
+
+```
