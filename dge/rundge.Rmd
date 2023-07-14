@@ -12,7 +12,7 @@ output:
 theme: cosmo
 ---
 
-Source codes: TBA
+Source codes: https://github.com/markziemann/dftd_rnaseq
 
 ```{r,pkg}
 
@@ -45,7 +45,9 @@ of each cell line:
 
 ```{r,ss1}
 
-ss <- read.table("ss.tsv",sep="\t",fill=TRUE,header=TRUE)
+ss <- read.table("../ss.tsv",sep="\t",fill=TRUE,header=TRUE)
+ss$DFT <- as.factor(ss$DFT)
+ss$clone <- sapply(strsplit(ss$ClientID,"_"),"[[",1)
 
 ss %>%
   kbl(caption="Sample sheet for all samples") %>%
@@ -60,9 +62,44 @@ able to simply do a DFT1 vs DFT2 contrast, if that makes sense.
 
 Regarding the reference transcriptome, we will use Ensembl v109.
 
-
 ## Functions
 
+```{r,func}
+
+maplot <- function(de,contrast_name) {
+  sig <-subset(de, padj < 0.05 )
+  up <-rownames(subset(de, padj < 0.05 & log2FoldChange > 0))
+  dn <-rownames(subset(de, padj < 0.05 & log2FoldChange < 0))
+  GENESUP <- length(up)
+  GENESDN <- length(dn)
+  DET=nrow(de)
+  SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down", DET, "detected")
+  ns <-subset(de, padj > 0.05 )
+  plot(log2(de$baseMean),de$log2FoldChange,
+       xlab="log2 basemean", ylab="log2 foldchange",
+       pch=19, cex=1, col="dark gray",
+       main=contrast_name, cex.main=0.7)
+  points(log2(sig$baseMean),sig$log2FoldChange,
+         pch=19, cex=1, col="red")
+  mtext(SUBHEADER,cex = 0.7)
+  grid()
+}
+
+make_volcano <- function(de,name) {
+    sig <- subset(de,padj<0.05)
+    N_SIG=nrow(sig)
+    N_UP=nrow(subset(sig,log2FoldChange>0))
+    N_DN=nrow(subset(sig,log2FoldChange<0))
+    DET=nrow(de)
+    HEADER=paste(N_SIG,"@5%FDR,", N_UP, "up", N_DN, "dn", DET, "detected")
+    plot(de$log2FoldChange,-log10(de$padj),cex=1,pch=19,col="darkgray",
+        main=name, xlab="log2 FC", ylab="-log10 pval")
+    mtext(HEADER)
+    grid()
+    points(sig$log2FoldChange,-log10(sig$padj),cex=1,pch=19,col="red")
+}
+
+```
 
 ## Load data
 
@@ -71,9 +108,43 @@ Here we load the data in from the aligner.
 ```{r,import}
 
 tmp <- read.table("../fastq/3col.tsv.gz")
-x <- as.data.frame(acast(tmp, V2~V1, value.var="V3"))
-colnames(x) <- gsub("fastq/","",colnames(x))
+x <- as.data.frame(acast(tmp, V2~V1, value.var="V3",fun.aggregate=sum))
 dim(x)
+
+```
+
+Load gene names.
+
+```{r,genenames}
+
+gn <- read.table("../ref/Sarcophilus_harrisii.mSarHar1.11.cdna+ncrna.genenames.tsv",fill=TRUE)
+
+gn <- gn[order(gn$V1),]
+
+dim(gn)
+
+```
+
+Load homology map
+
+```{r,homology}
+
+hm <- read.table("../ref/mart_export_ensembl109_2023-07-14.txt",sep="\t",header=TRUE)
+
+```
+
+Now need to collapse transcript data to genes.
+
+```{r,collapse}
+
+x$gene <- paste(gn$V2,gn$V3)
+
+y <- aggregate(. ~ gene,x,sum)
+
+rownames(y) <- y$gene
+y$gene = NULL
+
+dim(y)
 
 ```
 
@@ -84,15 +155,14 @@ Will also round values to integers.
 
 ```{r,qc1}
 
-cs <- colSums(x)
+cs <- colSums(y)
 cs <- cs[order(cs)]
 
-barplot(cs,ylim=c(1e2,2e7),log="y",main="All samples")
-barplot(head(cs),log="y",main="Samples with low reads")
+par(mar=c(5,10,5,2))
+barplot(cs,,main="All samples",horiz=TRUE,las=1)
+abline(v=1e7,col="red",lty=2)
 
-abline(h=1e6,col="red",lty=2)
-x <- x[,colSums(x)>1e6]
-x <- round(x)
+y <- round(y)
 
 ```
 
@@ -100,41 +170,69 @@ x <- round(x)
 
 This will help us to visualise the sources of variability in the overall dataset.
 
+Plot MDS and then remove the negative control and run Plot MDS again.
+
+Also fix the sample names.
+
 ```{r,plotmds1}
 
-plotMDS(x)
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+plotMDS(y)
+
+y <- y[,colnames(y) != "DEA5-4NEG"]
+
+plotMDS(y)
+
+ss <- ss[ss$ClientID != "DEA4_6NEG",]
+
+colnames(y) <- sapply(strsplit(ss$ClientID,"-"),"[[",1)
+
+cs <- colSums(y)
+cs <- cs[order(cs)]
+
+par(mar=c(5,10,5,2))
+barplot(cs,,main="All samples",horiz=TRUE,las=1)
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+plotMDS(y)
+
+cols <- ss$DFT
+cols <- gsub("DFT1","pink",cols)
+cols <- gsub("DFT2","lightblue",cols)
+mymds <- plotMDS(y,plot=FALSE)
+
+# fix the xlims
+XMIN=min(mymds$x)
+XMAX=max(mymds$x)
+XMID=(XMAX+XMIN)/2
+XMIN <- XMID + (XMIN-XMID)*1.1
+XMAX <- XMID+(XMAX-XMID)*1.1
+plotMDS(mymds,pch=19,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
+text(mymds,labels=colnames(y))
+mtext("pink=DFT1,blue=DFT2")
 
 ```
 
 ## DESeq2
 
-Run a differential analysis comparing DFT1 vs DFT2.
+Run a simple differential analysis comparing DFT1 vs DFT2 ignoring the clone type as a source of
+variation.
 
 ```{r,de1}
 
-ss1 <- ss[which(grepl("Wild",ss$Category) + grepl("Captive",ss$Category)>0),]
-ss1 <- ss1[ss1$Sample %in% colnames(x),]
-dim(ss1)
-x1 <- x[,which(colnames(x) %in% ss1$Sample)]
-dim(x1)
-x1 <- x1[which(rowMeans(x1)>10),]
-dim(x1)
+# split data will be necessary for the smaller comparisons (but not this one)
+y1 <- y
+ss1 <- ss
 
-col <- as.character(as.numeric(grepl("Cap",ss1$Category)))
-col <- gsub("0","lightgreen",col)
-col <- gsub("1","lightblue",col)
+y1 <- y1[which(rowMeans(y1)>10),]
+dim(y1)
 
-mds <- plotMDS(x1,pch=19,cex=3,col=col,main="MDS plot: wild and captive devils")
-mtext("wild=green, captive=blue")
-text(mds,labels=colnames(x1),cex=0.7)
-
-# coding captive
-ss1$captive <- grepl("Cap",ss1$Category)
-
-dds <- DESeqDataSetFromMatrix(countData = x1 , colData = ss1, design = ~ captive )
+dds <- DESeqDataSetFromMatrix(countData = y1 , colData = ss1, design = ~ DFT )
 res <- DESeq(dds)
 z<- results(res)
-vsd <- vst(dds, blind=FALSE,nsub=nrow(x1)-50)
+vsd <- vst(dds)
 zz<-cbind(as.data.frame(z),assay(vsd))
 dge<-as.data.frame(zz[order(zz$pvalue),])
 dge1 <- dge
@@ -148,21 +246,140 @@ length(sig1_dn)
 
 ```{r,de1viz}
 
-maplot(dge1,"wild vs captive devils")
+maplot(dge1,"DFT1 vs DFT2")
 
-make_volcano(dge1,"wild vs captive devils")
+make_volcano(dge1,"DFT1 vs DFT2")
 
 sig[1:50,1:6] %>%
-  kbl(caption="Comparison of wild vs captive devils") %>%
+  kbl(caption="Comparison of DFT1 vs DFT2") %>%
   kable_paper("hover", full_width = F)
 
 write.table(dge,file="dge1.tsv",sep="\t")
 
+# heatmap
 mx <- sig[,7:ncol(sig)]
 mx <- head(mx,30)
 colfunc <- colorRampPalette(c("blue", "white", "red"))
 heatmap.2(as.matrix(mx),trace="none",scale="row",
-  col=colfunc(25),ColSideColors=col,mar=c(5,12))
+  col=colfunc(25),ColSideColors=cols,mar=c(5,14),
+  cexRow=0.8,cexCol=0.7)
+
+```
+
+## Combine the three replicates
+
+Sum replicates.
+
+```{r,de2}
+
+x4906 <- rowSums(y[,ss$clone=="4906"])
+xC5065 <- rowSums(y[,ss$clone=="C5065"])
+x1426 <- rowSums(y[,ss$clone=="1426"])
+xRV <- rowSums(y[,ss$clone=="RV"])
+xSN <- rowSums(y[,ss$clone=="SN"])
+xTD549 <- rowSums(y[,ss$clone=="TD549"])
+
+y2 <- data.frame(x4906,xC5065,x1426,xRV,xSN,xTD549)
+ss2 <- as.data.frame(colnames(y2))
+colnames(ss2) <- "clone"
+ss2$DFT <- factor(c("DFT1","DFT1","DFT1","DFT2","DFT2","DFT2"))
+
+y2 <- y2[which(rowMeans(y2)>10),]
+dim(y2)
+
+dds <- DESeqDataSetFromMatrix(countData = y2 , colData = ss2, design = ~ DFT )
+res <- DESeq(dds)
+z<- results(res)
+vsd <- vst(dds)
+zz<-cbind(as.data.frame(z),assay(vsd))
+dge<-as.data.frame(zz[order(zz$pvalue),])
+dge2 <- dge
+sig <- subset(dge,padj<0.05)
+sig2_up <- rownames(subset(sig,log2FoldChange>0))
+sig2_dn <- rownames(subset(sig,log2FoldChange<0))
+length(sig2_up)
+length(sig2_dn)
+
+```
+
+```{r,de2viz}
+
+maplot(dge2,"DFT1 vs DFT2 aggregated")
+
+make_volcano(dge2,"DFT1 vs DFT2 aggregated")
+
+sig[1:50,1:6] %>%
+  kbl(caption="Comparison of DFT1 vs DFT2") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(dge,file="dge2.tsv",sep="\t")
+
+# heatmap
+mx <- sig[,7:ncol(sig)]
+mx <- head(mx,30)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(as.matrix(mx),trace="none",scale="row",
+  col=colfunc(25),ColSideColors=cols[1:6],mar=c(8,14),
+  cexRow=0.7,cexCol=1)
+
+```
+
+## Enrichment analysis
+
+Need to get human homologs of these genes.
+These were obtained from Ensembl v109 biomart (website).
+
+```{r,homologymap}
+
+rownames(dge2) <- sapply(strsplit(rownames(dge2),"\\."),"[[",1)
+
+hm2 <- hm[hm$Tasmanian.devil.gene.stable.ID != "",]
+
+gt <- hm2[,2:3]
+length(unique(gt$Tasmanian.devil.gene.stable.ID))
+length(unique(gt$Gene.name))
+
+```
+
+Now run mitch for DGE2.
+There will be a report generated that has more details on the enrichment analysis.
+The pathways are sourced from Reactome 7th July 2023.
+
+```{r,mitch2}
+
+genesets <- gmt_import("../ref/ReactomePathways_2023-07-14.gmt")
+
+m2 <- mitch_import(dge2, DEtype="deseq2",geneTable=gt)
+head(m2)
+
+res2 <- mitch_calc(m2, genesets, priority="effect",cores=16)
+
+if ( !file.exists("mitch2.html") ) {
+  mitch_report(res2, "mitch2.html")
+}
+
+top <- subset(res2$enrichment_result,p.adjustANOVA<0.05)
+
+topup <- head(subset(top,s.dist>0),20)
+
+topup %>%
+  kbl(caption="Top 20 upregulated pathways") %>%
+  kable_paper("hover", full_width = F)
+
+topdn <- head(subset(top,s.dist<0),20)
+
+topdn %>%
+  kbl(caption="Top 20 downregulated pathways") %>%
+  kable_paper("hover", full_width = F)
+
+top2 <- rbind(head(topup,10),head(topdn,10))
+top2 <- top2[order(-top2$s.dist),]
+par(mar=c(5,15,5,2))
+
+barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
+  main="Top Pathways",cex.names=0.6,xlab="Enrichment Score",
+  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+  xlim=c(0,0.8))
 
 ```
 
