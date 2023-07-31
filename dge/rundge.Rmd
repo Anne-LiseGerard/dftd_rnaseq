@@ -1,6 +1,6 @@
 ---
 title: "Examining global gene expression in DFT1 and DFT2 cells"
-author: "Mark Ziemann"
+author: "Mark Ziemann & Anne-Lise Gérard" 
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -159,7 +159,7 @@ cs <- colSums(y)
 cs <- cs[order(cs)]
 
 par(mar=c(5,10,5,2))
-barplot(cs,,main="All samples",horiz=TRUE,las=1)
+barplot(cs,main="All samples",horiz=TRUE,las=1)
 abline(v=1e7,col="red",lty=2)
 
 y <- round(y)
@@ -194,7 +194,7 @@ cs <- colSums(y)
 cs <- cs[order(cs)]
 
 par(mar=c(5,10,5,2))
-barplot(cs,,main="All samples",horiz=TRUE,las=1)
+barplot(cs,main="All samples",horiz=TRUE,las=1)
 
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 
@@ -398,6 +398,46 @@ par(mar=c(5,15,5,2))
 
 barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
   main="Top Pathways",cex.names=0.6,xlab="Enrichment Score",
+  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+  xlim=c(0,0.8))
+
+```
+
+Run mitch with curated metabolic pathways.
+These pathways were sourced from MSigDb on 31/07/2023.
+
+\textcolor{red}{TODO: check why genes not showing up in mitch report.}
+
+```{r,mitch3}
+
+genesets2 <- gmt_import("../ref/gsea/gsea.gmt")
+
+res3 <- mitch_calc(m2, genesets2, priority="effect",cores=16)
+
+if ( !file.exists("mitch3.html") ) {
+  mitch_report(res3, "mitch3.html")
+}
+
+top <- subset(res3$enrichment_result,p.adjustANOVA<0.05)
+
+topup <- head(subset(top,s.dist>0),20)
+
+topup %>%
+  kbl(caption="Top 20 upregulated metabolic pathways") %>%
+  kable_paper("hover", full_width = F)
+
+topdn <- head(subset(top,s.dist<0),20)
+
+topdn %>%
+  kbl(caption="Top 20 downregulated metabolic pathways") %>%
+  kable_paper("hover", full_width = F)
+
+top2 <- rbind(head(topup,10),head(topdn,10))
+top2 <- top2[order(-top2$s.dist),]
+par(mar=c(5,15,5,2))
+
+barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
+  main="Top Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
   col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
   xlim=c(0,0.8))
 
