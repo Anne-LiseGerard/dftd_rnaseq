@@ -12,7 +12,7 @@ output:
 theme: cosmo
 ---
 
-Source codes: https://github.com/markziemann/dftd_rnaseq
+Source codes: https://github.com/Anne-LiseGerard/dftd_rnaseq
 
 ```{r,pkg}
 
@@ -55,10 +55,9 @@ ss %>%
 
 ```
 
-We are mainly interested in comparing all DFT1samples against all DFT2 samples.
+We are mainly interested in comparing all DFT1 samples against all DFT2 samples.
 However, we did notice that some cell lines within a same DFT produced different results in the
-metabolism experiments so we might need to compare all 6 cell lines against one another and not be
-able to simply do a DFT1 vs DFT2 contrast, if that makes sense.
+metabolism experiments so we might need to compare all 6 cell lines against one another and not be able to simply do a DFT1 vs DFT2 contrast, if that makes sense.
 
 Regarding the reference transcriptome, we will use Ensembl v109.
 
@@ -344,14 +343,64 @@ heatmap.2(as.matrix(mx),trace="none",scale="row",
 
 ```
 
+## Compare cell lines against one another
+
+First 4906 vs RV, 4906 vs SN and 4906 vs TD549.
+Then 1426 vs RV, 1426 vs SN and 1426 vs TD549.
+Finally C5065 vs RV, C5065 vs SN and C5065 vs TD549.
+
+```{r,de3}
+
+#TODO: make loops to perform all comparisons
+y3 <- select(y1, "4906_1", "4906_2", "4906_3", "RV_1", "RV_2", "RV_3")
+y4 <- select(y1, "4906_1", "4906_2", "4906_3", "SN_1", "SN_2", "SN_3")
+y5 <- select(y1, "4906_1", "4906_2", "4906_3", "TD549_1", "TD549_2", "TD549_3")
+
+ss3 <- as.data.frame(colnames(y3))
+colnames(ss3) <- "clone"
+ss3$DFT <- factor(c("DFT1","DFT1","DFT1","DFT2","DFT2","DFT2"))
+
+dds <- DESeqDataSetFromMatrix(countData = y3, colData = ss3, design = ~ DFT )
+res <- DESeq(dds)
+z<- results(res)
+vsd <- vst(dds)
+zz<-cbind(as.data.frame(z),assay(vsd))
+dge3<-as.data.frame(zz[order(zz$pvalue),])
+sig <- subset(dge3,padj<0.05)
+sig2_up <- rownames(subset(sig,log2FoldChange>0))
+sig2_dn <- rownames(subset(sig,log2FoldChange<0))
+length(sig2_up)
+length(sig2_dn)
+
+maplot(dge3,"4906 vs RV")
+
+make_volcano(dge3,"4906 vs RV")
+
+sig[1:50,1:6] %>%
+  kbl(caption="Comparison of 4906 vs RV") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(dge,file="dge3.tsv",sep="\t")
+
+# heatmap
+mx <- sig[,7:ncol(sig)]
+mx <- head(mx,30)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(as.matrix(mx),trace="none",scale="row",
+  col=colfunc(25),ColSideColors=cols[1:6],mar=c(8,14),
+  cexRow=0.7,cexCol=1)
+
+```
+
 ## Enrichment analysis
 
 Need to get human homologs of these genes.
 These were obtained from Ensembl v109 biomart (website).
 
-```{r,homologymap}
+```{r}
 
 rownames(dge2) <- sapply(strsplit(rownames(dge2),"\\."),"[[",1)
+rownames(dge3) <- sapply(strsplit(rownames(dge3),"\\."),"[[",1)
 
 hm2 <- hm[hm$Tasmanian.devil.gene.stable.ID != "",]
 
@@ -406,16 +455,16 @@ barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
 Run mitch with curated metabolic pathways.
 These pathways were sourced from MSigDb on 31/07/2023.
 
-\textcolor{red}{TODO: check why genes not showing up in mitch report.}
-
 ```{r,mitch3}
 
 genesets2 <- gmt_import("../ref/gsea/gsea.gmt")
 
-res3 <- mitch_calc(m2, genesets2, priority="effect",cores=16)
+m3 <- mitch_import(dge2, DEtype="deseq2",geneTable=gt)
+
+res3 <- mitch_calc(m3, genesets2, priority="effect",cores=16)
 
 if ( !file.exists("mitch3.html") ) {
-  mitch_report(res3, "mitch3.html")
+  mitch_report(res4, "mitch3.html")
 }
 
 top <- subset(res3$enrichment_result,p.adjustANOVA<0.05)
@@ -442,6 +491,44 @@ barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
   xlim=c(0,0.8))
 
 ```
+
+Run mitch on cell line pairwise comparisons
+
+```{r,mitch4}
+
+m4 <- mitch_import(dge3, DEtype="deseq2",geneTable=gt)
+
+res4 <- mitch_calc(m4, genesets2, priority="effect",cores=16)
+
+if ( !file.exists("mitch4.html") ) {
+  mitch_report(res4, "mitch4.html")
+}
+
+top <- subset(res4$enrichment_result,p.adjustANOVA<0.05)
+
+topup <- head(subset(top,s.dist>0),20)
+
+topup %>%
+  kbl(caption="Top 20 upregulated metabolic pathways") %>%
+  kable_paper("hover", full_width = F)
+
+topdn <- head(subset(top,s.dist<0),20)
+
+topdn %>%
+  kbl(caption="Top 20 downregulated metabolic pathways") %>%
+  kable_paper("hover", full_width = F)
+
+top2 <- rbind(head(topup,10),head(topdn,10))
+top2 <- top2[order(-top2$s.dist),]
+par(mar=c(5,15,5,2))
+
+barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
+  main="Top Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
+  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+  xlim=c(0,0.8))
+
+```
+
 
 ## Session information
 
