@@ -352,43 +352,62 @@ Finally C5065 vs RV, C5065 vs SN and C5065 vs TD549.
 ```{r,de3}
 
 #TODO: make loops to perform all comparisons
-y3 <- select(y1, "4906_1", "4906_2", "4906_3", "RV_1", "RV_2", "RV_3")
-y4 <- select(y1, "4906_1", "4906_2", "4906_3", "SN_1", "SN_2", "SN_3")
-y5 <- select(y1, "4906_1", "4906_2", "4906_3", "TD549_1", "TD549_2", "TD549_3")
+yx <- vector(mode = "list", length = 9)
+yx[[1]] <- select(y1, "4906_1", "4906_2", "4906_3", "RV_1", "RV_2", "RV_3")
+yx[[2]] <- select(y1, "4906_1", "4906_2", "4906_3", "SN_1", "SN_2", "SN_3")
+yx[[3]] <- select(y1, "4906_1", "4906_2", "4906_3", "TD549_1", "TD549_2", "TD549_3")
+yx[[4]] <- select(y1, "1426_1", "1426_2", "1426_3", "RV_1", "RV_2", "RV_3")
+yx[[5]] <- select(y1, "1426_1", "1426_2", "1426_3", "SN_1", "SN_2", "SN_3")
+yx[[6]] <- select(y1, "1426_1", "1426_2", "1426_3", "TD549_1", "TD549_2", "TD549_3")
+yx[[7]] <- select(y1, "C5065_1", "C5065_2", "C5065_3", "RV_1", "RV_2", "RV_3")
+yx[[8]] <- select(y1, "C5065_1", "C5065_2", "C5065_3", "SN_1", "SN_2", "SN_3")
+yx[[9]] <- select(y1, "C5065_1", "C5065_2", "C5065_3", "TD549_1", "TD549_2", "TD549_3")
 
-ss3 <- as.data.frame(colnames(y3))
-colnames(ss3) <- "clone"
-ss3$DFT <- factor(c("DFT1","DFT1","DFT1","DFT2","DFT2","DFT2"))
+ssx <- vector(mode = "list", length = 9)
+dds <- vector(mode = "list", length = 9)
+res <- vector(mode = "list", length = 9)
+z <- vector(mode = "list", length = 9)
+vsd <- vector(mode = "list", length = 9)
+zz <- vector(mode = "list", length = 9)
+dgex <- vector(mode = "list", length = 9)
+sigx <- vector(mode = "list", length = 9)
 
-dds <- DESeqDataSetFromMatrix(countData = y3, colData = ss3, design = ~ DFT )
-res <- DESeq(dds)
-z<- results(res)
-vsd <- vst(dds)
-zz<-cbind(as.data.frame(z),assay(vsd))
-dge3<-as.data.frame(zz[order(zz$pvalue),])
-sig <- subset(dge3,padj<0.05)
-sig2_up <- rownames(subset(sig,log2FoldChange>0))
-sig2_dn <- rownames(subset(sig,log2FoldChange<0))
-length(sig2_up)
-length(sig2_dn)
+for(i in 1:9){
+  print(paste("Processing comparison: ", i, " on 9"))
+  ssx[[i]] <- as.data.frame(colnames(yx[[i]]))
+  colnames(ssx[[i]]) <- "clone"
+  ssx[[i]]$DFT <- factor(c("DFT1","DFT1","DFT1","DFT2","DFT2","DFT2"))
+  dds[[i]] <- DESeqDataSetFromMatrix(countData = yx[[i]], colData = ssx[[i]],
+                                     design = ~ DFT)
+  res[[i]] <- DESeq(dds[[i]], quiet=TRUE)
+  z[[i]] <- results(res[[i]])
+  vsd[[i]] <- vst(dds[[i]])
+  zz[[i]] <- cbind(as.data.frame(z[[i]]), assay(vsd[[i]]))
+  dgex[[i]] <- as.data.frame(zz[[i]][order(zz[[i]]$pvalue),])
+  sigx[[i]] <- subset(dgex[[i]], padj < 0.05)
+  }
 
-maplot(dge3,"4906 vs RV")
+plotnames <- c("4906 vs RV", "4906 vs SN", "4906 vs TD549",
+               "1426 vs RV", "1426 vs SN", "1426 vs TD549",
+               "C5065 vs RV", "C5065 vs SN", "C5065 vs TD549")
 
-make_volcano(dge3,"4906 vs RV")
-
-sig[1:50,1:6] %>%
-  kbl(caption="Comparison of 4906 vs RV") %>%
+for(i in 1:9){
+  maplot(dgex[[i]],plotnames[i])
+  make_volcano(dgex[[i]],plotnames[i])
+  
+  sigx[[i]][1:50,1:6] %>%
+  kbl(caption=plotnames[i]) %>%
   kable_paper("hover", full_width = F)
-
-write.table(dge,file="dge3.tsv",sep="\t")
-
-# heatmap
-mx <- sig[,7:ncol(sig)]
-mx <- head(mx,30)
-colfunc <- colorRampPalette(c("blue", "white", "red"))
-heatmap.2(as.matrix(mx),trace="none",scale="row",
+  
+  write.table(dgex[[i]],file=paste(plotnames[i],".tsv"),sep="\t")
+  
+  mx <- sigx[[i]][,7:ncol(sigx[[i]])]
+  mx <- head(mx,30)
+  colfunc <- colorRampPalette(c("blue", "white", "red"))
+  heatmap.2(as.matrix(mx),trace="none",scale="row",
   col=colfunc(25),ColSideColors=cols[1:6],mar=c(8,14),
   cexRow=0.7,cexCol=1)
+}
 
 ```
 
@@ -400,7 +419,11 @@ These were obtained from Ensembl v109 biomart (website).
 ```{r}
 
 rownames(dge2) <- sapply(strsplit(rownames(dge2),"\\."),"[[",1)
-rownames(dge3) <- sapply(strsplit(rownames(dge3),"\\."),"[[",1)
+
+for(i in 1:9){
+  rownames(dgex[[i]]) <- sapply(strsplit(rownames(dgex[[i]]),"\\."),"[[",1)
+}
+
 
 hm2 <- hm[hm$Tasmanian.devil.gene.stable.ID != "",]
 
@@ -492,40 +515,47 @@ barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
 
 ```
 
-Run mitch on cell line pairwise comparisons
+Run mitch on cell line pairwise comparisons.
 
-```{r,mitch4}
+```{r,mitchx}
 
-m4 <- mitch_import(dge3, DEtype="deseq2",geneTable=gt)
+mx <- vector(mode = "list", length = 9)
+resx <- vector(mode = "list", length = 9)
 
-res4 <- mitch_calc(m4, genesets2, priority="effect",cores=16)
+for(i in 1:9){
+  
+  mx[[i]] <- mitch_import(dgex[[i]], DEtype="deseq2",geneTable=gt)
+  resx[[i]] <- mitch_calc(mx[[i]], genesets2, priority="effect",cores=16)
 
-if ( !file.exists("mitch4.html") ) {
-  mitch_report(res4, "mitch4.html")
+  if ( !file.exists(paste(plotnames[i],"_mitch.html")) ) {
+    mitch_report(resx[[i]], paste(plotnames[i],"_mitch.html"))
+  }
+  
+  top <- subset(resx[[i]]$enrichment_result, p.adjustANOVA<0.05)
+  
+  topup <- head(subset(top,s.dist>0),20)
+  
+  topup %>%
+  kbl(caption=paste("Top 20 upregulated metabolic pathways: ", plotnames[i])) %>%
+  kable_paper("hover", full_width = F)
+  
+  topdn <- head(subset(top,s.dist<0),20)
+  
+  topdn %>%
+    kbl(caption=paste("Top 20 downregulated metabolic pathways: ", plotnames[i])) %>%
+    kable_paper("hover", full_width = F)
+  
+  top2 <- rbind(head(topup,10),head(topdn,10))
+  top2 <- top2[order(-top2$s.dist),]
+  par(mar=c(5,15,5,2))
+  
+  barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
+          main=paste(plotnames[i]),
+          cex.names=0.6,xlab="Enrichment Score",
+          col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+          xlim=c(0,0.8))
+  
 }
-
-top <- subset(res4$enrichment_result,p.adjustANOVA<0.05)
-
-topup <- head(subset(top,s.dist>0),20)
-
-topup %>%
-  kbl(caption="Top 20 upregulated metabolic pathways") %>%
-  kable_paper("hover", full_width = F)
-
-topdn <- head(subset(top,s.dist<0),20)
-
-topdn %>%
-  kbl(caption="Top 20 downregulated metabolic pathways") %>%
-  kable_paper("hover", full_width = F)
-
-top2 <- rbind(head(topup,10),head(topdn,10))
-top2 <- top2[order(-top2$s.dist),]
-par(mar=c(5,15,5,2))
-
-barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
-  main="Top Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
-  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
-  xlim=c(0,0.8))
 
 ```
 
