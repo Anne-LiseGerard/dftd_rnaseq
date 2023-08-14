@@ -25,6 +25,11 @@ suppressPackageStartupMessages({
     library("kableExtra")
     library("dplyr")
     library("tidyr")
+    library("ComplexHeatmap")
+    library("RColorBrewer")
+    library("circlize")
+    library("pathview")
+    library("stringr")
 })
 
 ```
@@ -308,6 +313,7 @@ y2 <- y2[which(rowMeans(y2)>10),]
 dim(y2)
 
 dds <- DESeqDataSetFromMatrix(countData = y2 , colData = ss2, design = ~ DFT )
+dds2 <- dds
 res <- DESeq(dds)
 z<- results(res)
 vsd <- vst(dds)
@@ -441,7 +447,7 @@ The pathways are sourced from Reactome 7th July 2023.
 
 genesets <- gmt_import("../ref/ReactomePathways_2023-07-14.gmt")
 
-m2 <- mitch_import(dge2, DEtype="deseq2",geneTable=gt)
+m2 <- mitch_import(dge2, DEtype="deseq2", geneTable=gt)
 head(m2)
 
 res2 <- mitch_calc(m2, genesets, priority="effect",cores=16)
@@ -482,9 +488,9 @@ These pathways were sourced from MSigDb on 31/07/2023.
 
 genesets2 <- gmt_import("../ref/gsea/gsea.gmt")
 
-m3 <- mitch_import(dge2, DEtype="deseq2",geneTable=gt)
+m3 <- mitch_import(dge2, DEtype="deseq2", geneTable=gt)
 
-res3 <- mitch_calc(m3, genesets2, priority="effect",cores=16)
+res3 <- mitch_calc(m3, genesets2, priority="effect", cores=16)
 
 if ( !file.exists("mitch3.html") ) {
   mitch_report(res3, "mitch3.html")
@@ -513,43 +519,151 @@ barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
   col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
   xlim=c(0,0.8))
 
-# merge cholesterol pathways
-cholesterol1 <- genesets2[["WP_CHOLESTEROL_BIOSYNTHESIS_PATHWAY"]]
-cholesterol2 <- genesets2[["REACTOME_CHOLESTEROL_BIOSYNTHESIS"]]
+```
+
+```{r complexheatmap1}
+
+# see https://www.youtube.com/watch?v=ht1r34-ifVI for reference
+
+# find corresponding human genes to devil ENS IDs
+dge2$ENSSHAG <- rownames(dge2)
+hm3 <- data.frame(ENSSHAG=hm2[,2],geneID=hm2[,3])
+dge2 <- left_join(dge2, hm3, by="ENSSHAG")
+dge2 <- unite(dge2,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
+dge2 <- unique(dge2)
+rownames(dge2) <- dge2$ENSSHAG_geneID
+
+# only plot significant DEGs
+dge2sig <- filter(dge2, padj < 0.05)
+dge2sig <- dge2sig[order(dge2sig$log2FoldChange, decreasing=TRUE),]
+
+mx <- dge2sig[,7:ncol(dge2sig)] # get normalised counts
+ 
+mx.scaled <- t(apply(mx[,1:6], 1, scale)) # center and scale each column (Z-score)
+colnames(mx.scaled) <- colnames(mx[,1:6])
+log2FC <- as.matrix(dge2sig$log2FoldChange)
+rownames(log2FC) <- rownames(dge2sig)
+colnames(log2FC) <- "logFC"
+mean <- as.matrix(dge2sig$baseMean)
+rownames(mean) <- rownames(dge2sig)
+colnames(mean) <- "AveExpr"
+
+col_logFC <- colorRamp2(c(min(log2FC),0,max(log2FC)), c("blue","white","red"))
+col_AveExpr <- colorRamp2(c(quantile(mean)[1], quantile(mean)[4]), c("white","red"))
+
+ha <- HeatmapAnnotation(summary=anno_summary(gp=gpar(fill=2),height=unit(2, "cm")))
+
+# ----- Cholesterol heatmap -----
+
+cholesterol1 <- genesets2[["WP_CHOLESTEROL_BIOSYNTHESIS_PATHWAY"]] # this WP geneset is included in the REACTOME one
+cholesterol2 <- genesets2[["REACTOME_CHOLESTEROL_BIOSYNTHESIS"]] # hence will only plot REACTOME one
 cholesterol3 <- genesets2[["WP_CHOLESTEROL_METABOLISM"]]
 cholesterol4 <- genesets2[["HALLMARK_CHOLESTEROL_HOMEOSTASIS"]]
-cholesterolx <- unique(c(cholesterol1,cholesterol2,cholesterol3,cholesterol4))
+cholesterol <- list(cholesterol2=cholesterol2,cholesterol3=cholesterol3,cholesterol4=cholesterol4)
+title <- c("REACTOME_CHOLESTEROL_BIOSYNTHESIS","WP_CHOLESTEROL_METABOLISM","HALLMARK_CHOLESTEROL_HOMEOSTASIS")
 
+for(i in 1:length(cholesterol)){
+  temp <- c()
+  for(j in 1:length(cholesterol[[i]])){temp <- rbind(temp,filter(hm3, geneID==cholesterol[[i]][j]))}
+  cholesterolx <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+  chol <- subset(mx.scaled, rownames(mx.scaled) %in% cholesterolx)
+  cholFC <- subset(log2FC, rownames(log2FC) %in% cholesterolx)
+  cholAE <- subset(mean, rownames(mean) %in% cholesterolx)
+  
+  h1 <- Heatmap(chol, cluster_rows = F,
+                column_labels = colnames(chol), name="Z-score",
+                cluster_columns = T)
+  h2 <- Heatmap(cholFC, row_labels = rownames(cholFC), 
+              cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
+              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                grid.text(round(as.numeric(cholFC[i, j],2)), x, y)
+              })
+  h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), 
+              cluster_rows = F, name = "AveExpr", col=col_AveExpr,
+              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                grid.text(round(as.numeric(cholAE[i, j],2)), x, y)},
+              column_title=title[i])
+  
+  name <- paste("p",i,sep="")
+  assign(name, h1 + h2 + h3)
+}
+
+p1
+p2
+p3
+
+# ----- Glycolysis heatmap -----
 glycolysis <- genesets2[["WP_AEROBIC_GLYCOLYSIS"]]
+temp <- c()
+for(i in 1:length(glycolysis)){temp <- rbind(temp,filter(hm3, geneID==glycolysis[i]))}
+glycolysis <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+glyc <- subset(mx.scaled, rownames(mx.scaled) %in% glycolysis)
+glycFC <- subset(log2FC, rownames(log2FC) %in% glycolysis)
+glycAE <- subset(mean, rownames(mean) %in% glycolysis)
 
-mx <- dge[,7:ncol(dge)]
-mx$gene <- row.names(mx) 
-mx <- separate(mx, gene, into = c("ENSSHAG", "geneID"), sep = " (?=[^ ]+$)")
-mx_chol <- data.frame()
-mx_glyc <- data.frame()
-for(i in 1:length(cholesterolx)){
-  temp <- filter(mx, geneID==cholesterolx[i])
-  mx_chol <- rbind(mx_chol, temp)
-}
-for(i in 1:length(glycolysis)){
-  temp <- filter(mx, geneID==glycolysis[i])
-  mx_glyc <- rbind(mx_glyc, temp)
-}
-rownames(mx_chol) <- mx_chol$geneID
-mx_chol <- mx_chol[,1:6]
-rownames(mx_glyc) <- mx_glyc$geneID
-mx_glyc <- mx_glyc[,1:6]
+h1 <- Heatmap(glyc, cluster_rows = F,
+              column_labels = colnames(glyc), name="Z-score",
+              cluster_columns = T)
+h2 <- Heatmap(glycFC, row_labels = rownames(glycFC), 
+            cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
+            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+              grid.text(round(as.numeric(glycFC[i, j],2)), x, y)
+            })
+h3 <- Heatmap(glycAE, row_labels = rownames(glycAE), 
+            cluster_rows = F, name = "AveExpr", col=col_AveExpr,
+            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+              grid.text(round(as.numeric(glycAE[i, j],2)), x, y)},
+            column_title = "WP_AEROBIC_GLYCOLYSIS")
 
-heatmap.2(as.matrix(mx_chol),trace="none",scale="row",
-          col=colfunc(25),ColSideColors=cols[1:6],cexRow=0.4,cexCol=0.75,
-          density.info=c("none"), srtCol=0, key.title=NA,
-          main='cholesterol metabolism')
-heatmap.2(as.matrix(mx_glyc),trace="none",scale="row",
-          col=colfunc(25),ColSideColors=cols[1:6],cexRow=0.4,cexCol=0.75,
-          density.info=c("none"), srtCol=0, key.title=NA,
-          main='aerobic glycolysis')
+h <- h1 + h2 + h3
+h
 
+```
+
+Pathview to visualise metabolic pathways. 
+
+```{r}
+# from KEGG db: cholesterol metabolism hsa04979 14/08/23
+# for some reason this geneset is not available on MSigDb
+kegg_chol <- c("ABCA1","APOA1","LPL","LCAT","LIPG","PLTP","CETP","LIPC","LPA","CD36",
+               "LDLR","NCEH1","SOAT2","SOAT1","APOC1","APOC2","APOH","ANGPTL3","ANGPTL4","ANGPTL8",
+               "SCARB1","SORT1","APOB","PCSK9","LDLRAP1","MYLIP","APOE","LRP1","LRP2","LRPAP1",
+               "LIPA","STARD3","VDAC1","VDAC2","VDAC3","TSPO","CYP27A1","VAPA","VAPB","NPC1",
+               "OSBPL5","NPC2","STAR","CIDEB","CYP7A1","ABCB11","ABCG5","ABCG8","APOA2","APOC3",
+               "APOA4")
+temp <- c()
+for(i in 1:length(kegg_chol)){temp <- rbind(temp,filter(hm3, geneID==kegg_chol[i]))}
+kegg_chol <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+kegg_cholFC <- subset(log2FC, rownames(log2FC) %in% kegg_chol)
+rownames(kegg_cholFC) <- str_split(rownames(kegg_cholFC), " ", simplify=T)[,2]
+pathview(gene.data=kegg_cholFC, pathway.id="hsa04979", species="hsa",gene.idtype="SYMBOL", node.sum="max",
+         limit=list(gene=c(-10,10), cpd=1), bins=list(gene=20, cpd=1),
+         low="blue",mid="white",high="red",
+         same.layer=FALSE)
+
+kegg_chol2 <- genesets2[["KEGG_STEROID_BIOSYNTHESIS"]]
+temp <- c()
+for(i in 1:length(kegg_chol2)){temp <- rbind(temp,filter(hm3, geneID==kegg_chol2[i]))}
+kegg_chol2 <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+kegg_chol2FC <- subset(log2FC, rownames(log2FC) %in% kegg_chol2)
+rownames(kegg_chol2FC) <- str_split(rownames(kegg_chol2FC), " ", simplify=T)[,2]
+pathview(gene.data=kegg_chol2FC, pathway.id="hsa00100", species="hsa",gene.idtype="SYMBOL", node.sum="max",
+         limit=list(gene=c(-10,10), cpd=1), bins=list(gene=20, cpd=1),
+         low="blue",mid="white",high="red",
+         same.layer=FALSE)
+
+kegg_glyc <- genesets2[["KEGG_GLYCOLYSIS_GLUCONEOGENESIS"]]
+temp <- c()
+for(i in 1:length(kegg_glyc)){temp <- rbind(temp,filter(hm3, geneID==kegg_glyc[i]))}
+kegg_glyc <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+kegg_glycFC <- subset(log2FC, rownames(log2FC) %in% kegg_glyc)
+
+rownames(kegg_glycFC) <- str_split(rownames(kegg_glycFC), " ", simplify=T)[,2]
+pathview(gene.data=kegg_glycFC, pathway.id="hsa00010", species="hsa",gene.idtype="SYMBOL", node.sum="max",
+         limit=list(gene=c(-10,10), cpd=1), bins=list(gene=20, cpd=1),
+         low="blue",mid="white",high="red",
+         same.layer=FALSE)
 ```
 
 Run mitch on cell line pairwise comparisons.
