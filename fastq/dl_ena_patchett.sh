@@ -6,3 +6,9 @@ wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR280/008/ERR2804408/ERR2804408.fas
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR280/004/ERR2804404/ERR2804404.fastq.gz
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR280/003/ERR2804403/ERR2804403.fastq.gz
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR280/005/ERR2804405/ERR2804405.fastq.gz
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR626/006/SRR6266556/SRR6266556.fastq.gz
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR626/007/SRR6266557/SRR6266557.fastq.gz
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR285/007/ERR2852727/ERR2852727.fastq.gz
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR285/006/ERR2852726/ERR2852726.fastq.gz
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR285/008/ERR2852728/ERR2852728.fastq.gz
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR285/009/ERR2852729/ERR2852729.fastq.gz
