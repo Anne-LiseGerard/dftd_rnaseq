@@ -1,0 +1,44 @@
+---
+title: "Re-analysing Patchett 2020 data"
+author: "Anne-Lise Gérard"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    fig_width: 5
+    fig_height: 5
+theme: cosmo
+---
+
+Source codes: https://github.com/Anne-LiseGerard/dftd_rnaseq
+Data: https://doi.org/10.1007/s00018-019-03259-2
+
+```{r,pkg}
+
+suppressPackageStartupMessages({
+    library("reshape2")
+    library("gplots")
+    library("DESeq2")
+    library("mitch")
+    #library("limma")
+    library("kableExtra")
+    library("dplyr")
+    library("tidyr")
+    library("ComplexHeatmap")
+    library("RColorBrewer")
+    #library("circlize")
+    #library("pathview")
+    #library("stringr")
+    #library("grid")
+})
+
+```
+
+## Background
+
+Goal: re-analyse previously published DFTD tumour biopsy transcriptomes and compare to DFTD cell line transcriptomes, focusing on genes involved in metabolism.
+
+
+
