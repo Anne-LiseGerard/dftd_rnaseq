@@ -121,7 +121,7 @@ dim(x)
 
 Load gene names.
 
-```{r,genenames}
+```{r, genenames}
 
 gn <- read.table("../ref/Sarcophilus_harrisii.mSarHar1.11.cdna+ncrna.genenames.tsv",fill=TRUE)
 
@@ -182,7 +182,7 @@ Also fix the sample names.
 
 Plot MDS by DFT.
 
-```{r,plotmds1}
+```{r, plotmds1}
 
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 
@@ -477,7 +477,7 @@ top2 <- top2[order(-top2$s.dist),]
 par(mar=c(5,15,5,2))
 
 barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
-  main="Top Pathways",cex.names=0.6,xlab="Enrichment Score",
+  main="Top REACTOME Pathways",cex.names=0.6,xlab="Enrichment Score",
   col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
   xlim=c(0,0.8))
 
@@ -491,7 +491,7 @@ KEGG gene sets under the "Metabolism" hierarchy were sourced from MSigDb in Augu
 
 genesets2 <- gmt_import("../ref/gsea/gsea_KEGG.gmt")
 
-res2 <- mitch_calc(m2, genesets, priority="effect",cores=16)
+res2 <- mitch_calc(m2, genesets2, priority="effect",cores=16)
 
 if ( !file.exists("mitch2.html") ) {
   mitch_report(res2, "mitch2.html")
@@ -516,7 +516,7 @@ top2 <- top2[order(-top2$s.dist),]
 par(mar=c(5,15,5,2))
 
 barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
-  main="Top Pathways",cex.names=0.6,xlab="Enrichment Score",
+  main="Top KEGG Pathways",cex.names=0.6,xlab="Enrichment Score",
   col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
   xlim=c(0,0.8))
 
@@ -579,7 +579,7 @@ top2 <- top2[order(-top2$s.dist),]
 par(mar=c(5,15,5,2))
 
 barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
-  main="Top Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
+  main="Top REACTOME Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
   col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
   xlim=c(0,0.8))
 
@@ -642,15 +642,15 @@ colnames(met40AE) <- "AveExpr"
 h1 <- Heatmap(met40, cluster_rows = F,
               column_labels = colnames(met40), name="Z-score",
               cluster_columns = T)
-h2 <- Heatmap(met40FC, row_labels = rownames(met40FC), 
+h2 <- Heatmap(met40FC, row_labels = rownames(met40FC), row_names_gp = gpar(fontsize = 6),
               cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
               cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40FC[i, j],2)), x, y)
+                grid.text(round(as.numeric(met40FC[i, j],2)), x, y,gp=gpar(fontsize=6))
               })
-h3 <- Heatmap(met40AE, row_labels = rownames(met40AE), 
+h3 <- Heatmap(met40AE, row_labels = rownames(met40AE), row_names_gp = gpar(fontsize = 6),
               cluster_rows = F, name = "AveExpr", col=col_AveExpr,
               cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40AE[i, j],2)), x, y)},
+                grid.text(round(as.numeric(met40AE[i, j],2)), x, y,gp=gpar(fontsize=6))},
               column_title = "TOP 40 UP & DOWN - KEGG METABOLISM")
 
 h <- h1 + h2 + h3
@@ -682,15 +682,15 @@ colnames(met40AE) <- "AveExpr"
 h1 <- Heatmap(met40, cluster_rows = F,
               column_labels = colnames(met40), name="Z-score",
               cluster_columns = T)
-h2 <- Heatmap(met40FC, row_labels = rownames(met40FC), 
+h2 <- Heatmap(met40FC, row_labels = rownames(met40FC), row_names_gp = gpar(fontsize = 6),
               cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
               cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40FC[i, j],2)), x, y)
+                grid.text(round(as.numeric(met40FC[i, j],2)), x, y,gp=gpar(fontsize=6))
               })
-h3 <- Heatmap(met40AE, row_labels = rownames(met40AE), 
+h3 <- Heatmap(met40AE, row_labels = rownames(met40AE), row_names_gp = gpar(fontsize = 6),
               cluster_rows = F, name = "AveExpr", col=col_AveExpr,
               cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40AE[i, j],2)), x, y)},
+                grid.text(round(as.numeric(met40AE[i, j],2)), x, y,gp=gpar(fontsize=6))},
               column_title = "TOP 40 UP & DOWN - REACTOME METABOLISM")
 
 h <- h1 + h2 + h3
@@ -700,7 +700,7 @@ h
 
 kegg <- genesets2[["KEGG_STEROID_BIOSYNTHESIS"]] 
 temp <- c()
-for(i in 1:length(glycolysis)){temp <- rbind(temp,filter(hm3, geneID==glycolysis[i]))}
+for(i in 1:length(kegg)){temp <- rbind(temp,filter(hm3, geneID==kegg[i]))}
 glycolysis <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
 glyc <- subset(mx.scaled, rownames(mx.scaled) %in% glycolysis)
@@ -710,15 +710,15 @@ glycAE <- subset(mean, rownames(mean) %in% glycolysis)
 h1 <- Heatmap(glyc, cluster_rows = F,
               column_labels = colnames(glyc), name="Z-score",
               cluster_columns = T)
-h2 <- Heatmap(glycFC, row_labels = rownames(glycFC), 
+h2 <- Heatmap(glycFC, row_labels = rownames(glycFC), row_names_gp = gpar(fontsize = 6),
             cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
             cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(glycFC[i, j],2)), x, y)
+              grid.text(round(as.numeric(glycFC[i, j],2)), x, y,gp=gpar(fontsize=6))
             })
-h3 <- Heatmap(glycAE, row_labels = rownames(glycAE), 
+h3 <- Heatmap(glycAE, row_labels = rownames(glycAE), row_names_gp = gpar(fontsize = 6),
             cluster_rows = F, name = "AveExpr", col=col_AveExpr,
             cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(glycAE[i, j],2)), x, y)},
+              grid.text(round(as.numeric(glycAE[i, j],2)), x, y,gp=gpar(fontsize=6))},
             column_title = "KEGG Steroid biosynthesis")
 
 h <- h1 + h2 + h3
@@ -737,15 +737,15 @@ cholAE <- subset(mean, rownames(mean) %in% cholesterol)
 h1 <- Heatmap(chol, cluster_rows = F,
               column_labels = colnames(chol), name="Z-score",
               cluster_columns = T)
-h2 <- Heatmap(cholFC, row_labels = rownames(cholFC), 
+h2 <- Heatmap(cholFC, row_labels = rownames(cholFC), row_names_gp = gpar(fontsize = 6),
             cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
             cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholFC[i, j],2)), x, y)
+              grid.text(round(as.numeric(cholFC[i, j],2)), x, y,gp=gpar(fontsize=6))
             })
-h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), 
+h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), row_names_gp = gpar(fontsize = 6),
             cluster_rows = F, name = "AveExpr", col=col_AveExpr,
             cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholAE[i, j],2)), x, y)},
+              grid.text(round(as.numeric(cholAE[i, j],2)), x, y,gp=gpar(fontsize=6))},
             column_title = "Reactome Cholesterol biosynthesis")
 
 h <- h1 + h2 + h3
@@ -764,15 +764,15 @@ cholAE <- subset(mean, rownames(mean) %in% cholesterol)
 h1 <- Heatmap(chol, cluster_rows = F,
               column_labels = colnames(chol), name="Z-score",
               cluster_columns = T)
-h2 <- Heatmap(cholFC, row_labels = rownames(cholFC), 
+h2 <- Heatmap(cholFC, row_labels = rownames(cholFC), row_names_gp = gpar(fontsize = 6),
             cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
             cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholFC[i, j],2)), x, y)
+              grid.text(round(as.numeric(cholFC[i, j],2)), x, y,gp=gpar(fontsize=6))
             })
-h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), 
+h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), row_names_gp = gpar(fontsize = 6),
             cluster_rows = F, name = "AveExpr", col=col_AveExpr,
             cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholAE[i, j],2)), x, y)},
+              grid.text(round(as.numeric(cholAE[i, j],2)), x, y,gp=gpar(fontsize=6))},
             column_title = "Reactome Degradation of cysteine and homocysteine")
 
 h <- h1 + h2 + h3

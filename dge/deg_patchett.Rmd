@@ -22,7 +22,7 @@ suppressPackageStartupMessages({
     library("gplots")
     library("DESeq2")
     library("mitch")
-    #library("limma")
+    library("limma")
     library("kableExtra")
     library("dplyr")
     library("tidyr")
@@ -30,7 +30,7 @@ suppressPackageStartupMessages({
     library("RColorBrewer")
     #library("circlize")
     #library("pathview")
-    #library("stringr")
+    library("stringr")
     #library("grid")
 })
 
@@ -38,7 +38,446 @@ suppressPackageStartupMessages({
 
 ## Background
 
-Goal: re-analyse previously published DFTD tumour biopsy transcriptomes and compare to DFTD cell line transcriptomes, focusing on genes involved in metabolism.
+Goal: re-analyse previously published DFTD tumour biopsy transcriptomes and compare to DFTD cell line transcriptomes, focusing on genes involved in metabolism. Below is a list of the samples for this project.
+
+```{r, ss}
+
+ss <- read.table("../ss_patchett.txt",sep="\t",fill=TRUE,header=TRUE)
+ss$DFT <- as.factor(ss$DFT)
+
+ss %>%
+  kbl(caption="Sample sheet for all samples") %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+## Functions
+
+```{r, func}
+
+maplot <- function(de,contrast_name) {
+  sig <-subset(de, padj < 0.05 )
+  up <-rownames(subset(de, padj < 0.05 & log2FoldChange > 0))
+  dn <-rownames(subset(de, padj < 0.05 & log2FoldChange < 0))
+  GENESUP <- length(up)
+  GENESDN <- length(dn)
+  DET=nrow(de)
+  SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down", DET, "detected")
+  ns <-subset(de, padj > 0.05 )
+  plot(log2(de$baseMean),de$log2FoldChange,
+       xlab="log2 basemean", ylab="log2 foldchange",
+       pch=19, cex=1, col="dark gray",
+       main=contrast_name, cex.main=0.7)
+  points(log2(sig$baseMean),sig$log2FoldChange,
+         pch=19, cex=1, col="red")
+  mtext(SUBHEADER,cex = 0.7)
+  grid()
+}
+
+make_volcano <- function(de,name) {
+    sig <- subset(de,padj<0.05)
+    N_SIG=nrow(sig)
+    N_UP=nrow(subset(sig,log2FoldChange>0))
+    N_DN=nrow(subset(sig,log2FoldChange<0))
+    DET=nrow(de)
+    HEADER=paste(N_SIG,"@5%FDR,", N_UP, "up", N_DN, "dn", DET, "detected")
+    plot(de$log2FoldChange,-log10(de$padj),cex=1,pch=19,col="darkgray",
+        main=name, xlab="log2 FC", ylab="-log10 pval")
+    mtext(HEADER)
+    grid()
+    points(sig$log2FoldChange,-log10(sig$padj),cex=1,pch=19,col="red")
+}
+
+```
+
+## Load data
+
+Import data from the aligner. 
+
+```{r, import}
+
+tmp <- read.table("../fastq/3col_patchett.tsv.gz")
+tmp$V1 <- gsub('.fastq-trimmed.fastq','',tmp$V1)
+x <- as.data.frame(acast(tmp, V2~V1, value.var="V3",fun.aggregate=sum))
+
+tmp_old <- read.table("../fastq/3col_old.tsv.gz")
+tmp_old$V1 <- gsub('.fastq-trimmed.fastq','',tmp_old$V1)
+x_old <- as.data.frame(acast(tmp_old, V2~V1, value.var="V3",fun.aggregate=sum))
+
+```
+
+Load gene names.
+
+```{r, genenames}
+
+gn <- read.table("../ref/Sarcophilus_harrisii.mSarHar1.11.cdna+ncrna.genenames.tsv",fill=TRUE)
+gn <- gn[order(gn$V1),]
+
+gn_old <- read.table("../ref/Sarcophilus_harrisii.DEVIL7.0.cdna+ncrna.genenames.tsv",fill=TRUE)
+gn_old <- gn_old[order(gn_old$V1),]
+
+```
+
+```{r, homology}
+
+hm <- read.table("../ref/mart_export_ensembl109_2023-07-14.txt",sep="\t",header=TRUE)
+
+hm_old <- read.table("../ref/mart_export_ensembl101_2023-09-06.txt",sep="\t",header=TRUE)
+
+```
+
+Now need to collapse transcript data to genes.
+
+```{r, collapse}
+
+x$gene <- paste(gn$V2,gn$V3)
+
+y <- aggregate(. ~ gene,x,sum)
+
+rownames(y) <- y$gene
+y$gene = NULL
 
 
+x_old$gene <- paste(gn_old$V2,gn_old$V3)
 
+y_old <- aggregate(. ~ gene,x_old,sum)
+
+rownames(y_old) <- y_old$gene
+y_old$gene = NULL
+
+```
+
+## Quality control
+
+Samples with <1M reads should be omitted.
+Will also round values to integers.
+
+```{r, qc1}
+
+cs <- colSums(y)
+cs <- cs[order(cs)]
+
+par(mar=c(5,10,5,2))
+barplot(cs,main="All samples",horiz=TRUE,las=1)
+abline(v=1e7,col="red",lty=2)
+
+y <- round(y)
+
+
+cs_old <- colSums(y_old)
+cs_old <- cs_old[order(cs_old)]
+
+par(mar=c(5,10,5,2))
+barplot(cs_old,main="All samples - old genome ",horiz=TRUE,las=1, xli=c(0,4e+07))
+abline(v=1e7,col="red",lty=2)
+
+y_old <- round(y_old)
+
+```
+
+## MDS
+
+This will help us to visualise the sources of variability in the overall dataset.
+
+Plot MDS. Also fix the sample names.
+
+Plot MDS by DFT.
+
+```{r, plotmds1}
+
+par(mar = c(5.1, 4.1, 4.1, 2.1))
+
+colnames(y) <- ss$sample_id
+
+cs <- colSums(y)
+cs <- cs[order(cs)]
+
+par(mar=c(5,10,5,2))
+barplot(cs,main="All samples",horiz=TRUE,las=1)
+
+
+par(mar = c(5.1, 4.1, 4.1, 2.1))
+
+colnames(y_old) <- ss$sample_id[1:8]
+
+cs_old <- colSums(y_old)
+cs_old <- cs_old[order(cs_old)]
+
+par(mar=c(5,10,5,2))
+barplot(cs_old,main="All samples - old genome",horiz=TRUE,las=1, xlim=c(0,4e+07))
+
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+cols <- ss$DFT
+cols <- gsub("DFT1","lightblue",cols)
+cols <- gsub("DFT2","pink",cols)
+mymds <- plotMDS(y,plot=FALSE)
+
+mymds_old <- plotMDS(y_old,plot=FALSE)
+
+# fix the xlims
+XMIN=min(mymds$x)
+XMAX=max(mymds$x)
+XMID=(XMAX+XMIN)/2
+XMIN <- XMID + (XMIN-XMID)*1.1
+XMAX <- XMID+(XMAX-XMID)*1.1
+plotMDS(mymds,pch=19,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
+text(mymds,labels=colnames(y))
+mtext("blue=DFT1, pink=DFT2")
+
+plotMDS(mymds_old,pch=19,cex=3,col=cols,main="MDS plot - old genome",xlim=c(XMIN,XMAX))
+text(mymds_old,labels=colnames(y_old))
+mtext("blue=DFT1, pink=DFT2")
+
+y_DFT1 <- y[,colnames(y) %in% c("sha_DFT1_1-1","sha_DFT1_1-2","sha_DFT1_2-1","sha_DFT1_2-2",
+                                "C5065_UT_01", "C5065_UT_02")]
+y_DFT2 <- y[,colnames(y) %in% c("sha_DFT2_1-1","sha_DFT2_1-2","sha_DFT2_2-1","sha_DFT2_2-2",
+                                "sha_DFT2_RV_1-1","sha_DFT2_RV_1-2","sha_DFT2_RV_2-1","sha_DFT2_RV_2-2")] 
+
+y_biopsy <- y[,colnames(y) %in% c("sha_DFT1_1-1","sha_DFT1_1-2","sha_DFT1_2-1","sha_DFT1_2-2",
+                                  "sha_DFT2_1-1","sha_DFT2_1-2","sha_DFT2_2-1","sha_DFT2_2-2")]
+y_cline <- y[,colnames(y) %in% c( "C5065_UT_01", "C5065_UT_02",
+                                "sha_DFT2_RV_1-1","sha_DFT2_RV_1-2","sha_DFT2_RV_2-1","sha_DFT2_RV_2-2")] 
+
+mdsDFT1 <- plotMDS(y_DFT1,plot=FALSE)
+plotMDS(mdsDFT1,pch=19,cex=3,col="pink",main="MDS plot",xlim=c(XMIN,XMAX))
+text(mdsDFT1,labels=colnames(y_DFT1))
+mtext("DFT1")
+
+mdsDFT2 <- plotMDS(y_DFT2,plot=FALSE)
+plotMDS(mdsDFT2,pch=19,cex=3,col="lightblue",main="MDS plot",xlim=c(XMIN,XMAX))
+text(mdsDFT2, labels=colnames(y_DFT2))
+mtext("DFT2")
+
+mds_biopsy <- plotMDS(y_biopsy,plot=FALSE)
+plotMDS(mds_biopsy,pch=19,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
+text(mds_biopsy,labels=colnames(y_biopsy))
+mtext("Tumour biopsies: blue=DFT1, pink=DFT2")
+
+mds_cline <- plotMDS(y_cline,plot=FALSE)
+plotMDS(mds_cline,pch=19,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
+text(mds_cline,labels=colnames(y_cline))
+mtext("Cell lines: blue=DFT1, pink=DFT2")
+
+```
+
+## DESeq2
+
+Sum replicates then run differential expression analysis.
+For now, ignore alignment on old genome and cell line data.
+
+```{r, de}
+
+y_cell <- y[,9:14]
+y <- y[,1:8]
+
+# combine replicates for each sample
+DFT1_1 <- rowSums(y[,ss$sample=="DFT1_1"])
+DFT1_2 <- rowSums(y[,ss$sample=="DFT1_2"])
+DFT2_1 <- rowSums(y[,ss$sample=="DFT2_1"])
+DFT2_2 <- rowSums(y[,ss$sample=="DFT2_2"])
+
+y2 <- data.frame(DFT1_1,DFT1_2,DFT2_1,DFT2_2)
+ss2 <- as.data.frame(colnames(y2))
+colnames(ss2) <- "sample"
+ss2$DFT <- factor(c("DFT1","DFT1","DFT2","DFT2"))
+
+y2 <- y2[which(rowMeans(y2)>10),] # remove genes with average count < 10
+dim(y2)
+
+dds <- DESeqDataSetFromMatrix(countData = y2 , colData = ss2, design = ~ DFT )
+dds2 <- dds
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds)
+zz<-cbind(as.data.frame(z),assay(vsd))
+dge<-as.data.frame(zz[order(zz$pvalue),])
+dge2 <- dge
+sig <- subset(dge,padj<0.05)
+sig2_up <- rownames(subset(sig,log2FoldChange>0))
+sig2_dn <- rownames(subset(sig,log2FoldChange<0))
+length(sig2_up)
+length(sig2_dn)
+
+```
+
+```{r,deviz}
+
+maplot(dge2,"DFT1 vs DFT2 biopsies")
+
+make_volcano(dge2,"DFT1 vs DFT2 biopsies")
+
+sig[1:50,1:6] %>%
+  kbl(caption="DFT1 vs DFT2 biopsies") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(dge2,file="dge2.tsv",sep="\t")
+
+# heatmap
+mx <- sig[,7:ncol(sig)]
+mx <- head(mx,30)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(as.matrix(mx),trace="none",scale="row",
+  col=colfunc(25),ColSideColors=cols[3:6],mar=c(8,14),
+  cexRow=0.7,cexCol=1)
+
+```
+## Enrichment analysis
+
+Need to get human homologs of these genes.
+These were obtained from Ensembl v109 biomart (website).
+
+```{r}
+
+rownames(dge2) <- sapply(strsplit(rownames(dge2),"\\."),"[[",1)
+
+hm2 <- hm[hm$Tasmanian.devil.gene.stable.ID != "",]
+
+gt <- hm2[,2:3]
+length(unique(gt$Tasmanian.devil.gene.stable.ID))
+length(unique(gt$Gene.name))
+
+```
+
+Now run mitch for DGE2. The pathways are sourced from Reactome 7th July 2023.
+
+```{r,mitch}
+
+genesets <- gmt_import("../ref/ReactomePathways_2023-07-14.gmt")
+
+m2 <- mitch_import(dge2, DEtype="deseq2", geneTable=gt)
+head(m2)
+
+res2 <- mitch_calc(m2, genesets, priority="effect",cores=16)
+
+if ( !file.exists("mitch2.html") ) {
+  mitch_report(res2, "mitch2.html")
+}
+
+top <- subset(res2$enrichment_result,p.adjustANOVA<0.05)
+
+topup <- head(subset(top,s.dist>0),20)
+
+topup %>%
+  kbl(caption="Top 20 upregulated pathways") %>%
+  kable_paper("hover", full_width = F)
+
+topdn <- head(subset(top,s.dist<0),20)
+
+topdn %>%
+  kbl(caption="Top 20 downregulated pathways") %>%
+  kable_paper("hover", full_width = F)
+
+top2 <- rbind(head(topup,10),head(topdn,10))
+top2 <- top2[order(-top2$s.dist),]
+par(mar=c(5,15,5,2))
+
+barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
+  main="Top REACTOME Pathways",cex.names=0.6,xlab="Enrichment Score",
+  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+  xlim=c(0,0.8))
+
+```
+
+Run mitch with curated metabolic pathways.
+
+KEGG gene sets under the "Metabolism" hierarchy were sourced from MSigDb in August 2023.
+
+```{r, mitch2}
+
+genesets2 <- gmt_import("../ref/gsea/gsea_KEGG.gmt")
+
+res2 <- mitch_calc(m2, genesets2, priority="effect",cores=16)
+
+if ( !file.exists("mitch2.html") ) {
+  mitch_report(res2, "mitch2.html")
+}
+
+top <- subset(res2$enrichment_result,p.adjustANOVA<0.05)
+
+topup <- head(subset(top,s.dist>0),20)
+
+topup %>%
+  kbl(caption="Top 20 upregulated pathways") %>%
+  kable_paper("hover", full_width = F)
+
+topdn <- head(subset(top,s.dist<0),20)
+
+topdn %>%
+  kbl(caption="Top 20 downregulated pathways") %>%
+  kable_paper("hover", full_width = F)
+
+top2 <- rbind(head(topup,10),head(topdn,10))
+top2 <- top2[order(-top2$s.dist),]
+par(mar=c(5,15,5,2))
+
+barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
+  main="Top KEGG Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
+  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+  xlim=c(0,0.8))
+
+```
+Same with Reactome this time. Reactome gene sets of the metabolism hierarchy were sourced from the Reactome website in August 2023.
+
+```{r, extract Metabolism pathways}
+hierarchy <- read.table("../ref/gsea/ReactomePathwaysRelation.txt", sep ="\t", header = F, dec =".")
+pathways <- read.delim("../ref/gsea/ReactomePathways.txt", header=FALSE)
+
+hierarchy <- hierarchy[grep("HSA", hierarchy$V1), ] # keep only homo sapiens data
+pathways <- pathways[grep("HSA", pathways$V1), 1:2] 
+
+metabo_pathways <- "R-HSA-1430728" # reactome code for metabolism 
+
+# this is very bad coding - but it works
+# why 325? that is when while loop crashes because all branches of the hierarchy have been looped over
+# will have to change this if Reactome data is updated
+while(length(metabo_pathways) < 325){
+  for(i in 1:length(metabo_pathways)){
+    metabo_pathways <- unique(c(metabo_pathways,filter(hierarchy, V1 == metabo_pathways[i])$V2))
+    }
+  }
+
+mpathways <- c()
+for(i in 1:length(metabo_pathways)){mpathways <- c(mpathways,filter(pathways, V1 == metabo_pathways[i])$V2)}
+
+library(magrittr)
+genesets3 <- extract(genesets, mpathways)
+# remove empty sets (ie hierarchy exists but no gene set is associated to it)
+genesets3 <- genesets3[lapply(genesets3,length)>0]
+
+```
+
+```{r,mitch3}
+
+m3 <- mitch_import(dge2, DEtype="deseq2", geneTable=gt)
+res3 <- mitch_calc(m3, genesets3, priority="effect", cores=16)
+
+if ( !file.exists("mitch_biopsy.html") ) {
+  mitch_report(res3, "mitch_biopsy.html")
+}
+
+top <- subset(res3$enrichment_result,p.adjustANOVA<0.05)
+
+topup <- head(subset(top,s.dist>0),20)
+
+topup %>%
+  kbl(caption="Top 20 upregulated metabolic pathways") %>%
+  kable_paper("hover", full_width = F)
+
+topdn <- head(subset(top,s.dist<0),20)
+
+topdn %>%
+  kbl(caption="Top 20 downregulated metabolic pathways") %>%
+  kable_paper("hover", full_width = F)
+
+top2 <- rbind(head(topup,10),head(topdn,10))
+top2 <- top2[order(-top2$s.dist),]
+par(mar=c(5,15,5,2))
+
+barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
+  main="Top REACTOME Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
+  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+  xlim=c(0,0.8))
+
+```
