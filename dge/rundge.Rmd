@@ -31,24 +31,15 @@ suppressPackageStartupMessages({
     library("pathview")
     library("stringr")
     library("grid")
+    library("VennDiagram")
 })
 
 ```
 
 ## Background
 
-The goal of our study is to compare the expression of genes related to metabolism of DFT1 cell lines to
-DFT2 cell lines.
-Our main goal is comparing genes expressed in the following pathways: Glycolysis, Pentose Phosphate
-Pathway, Fatty Acid Metabolism, Glutaminolysis and Oxidative Phosphorylation.
-A secondary goal would be to compare the expression of genes related to the production of Reactive
-Oxygen Species (ROS) and protection against ROS (genes involved in DNA repair, production of
-antioxydants etc).
-Finally, we might also be interested in looking into genes linked to cholesterol metabolism as this has
-been shown to be important for DFT1 but I need to do some additional reading to know what exactly we're
-after.
-See sample sheet below (edited from Yin Peng), there are 3 DFT1 and 3 DFT2 cell lines, and 3 replicates
-of each cell line:
+The goal of our study is to compare the expression of genes related to metabolism of DFT1 cell lines to DFT2 cell lines. 
+For this, we have generated transcriptomes for 3 DFT1 and 3 DFT2 cell lines, each in triplicate.
 
 ```{r,ss1}
 
@@ -62,11 +53,8 @@ ss %>%
 
 ```
 
-We are mainly interested in comparing all DFT1 samples against all DFT2 samples.
-However, we did notice that some cell lines within a same DFT produced different results in the
-metabolism experiments so we might need to compare all 6 cell lines against one another and not be able to simply do a DFT1 vs DFT2 contrast, if that makes sense.
-
-Regarding the reference transcriptome, we will use Ensembl v109.
+We are mainly interested in comparing all DFT1 samples against all DFT2 samples, but pairwise cell line contrasts will also be performed.
+We will use Ensembl v109 for the reference transcriptome.
 
 ## Functions
 
@@ -184,13 +172,7 @@ Plot MDS by DFT.
 
 ```{r, plotmds1}
 
-par(mar = c(5.1, 4.1, 4.1, 2.1) )
-
-plotMDS(y)
-
 y <- y[,colnames(y) != "DEA5-4NEG"]
-
-plotMDS(y)
 
 ss <- ss[ss$ClientID != "DEA4_6NEG",]
 
@@ -200,11 +182,8 @@ cs <- colSums(y)
 cs <- cs[order(cs)]
 
 par(mar=c(5,10,5,2))
+
 barplot(cs,main="All samples",horiz=TRUE,las=1)
-
-par(mar = c(5.1, 4.1, 4.1, 2.1) )
-
-plotMDS(y)
 
 cols <- ss$DFT
 cols <- gsub("DFT1","pink",cols)
@@ -217,10 +196,11 @@ XMAX=max(mymds$x)
 XMID=(XMAX+XMIN)/2
 XMIN <- XMID + (XMIN-XMID)*1.1
 XMAX <- XMID+(XMAX-XMID)*1.1
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
 plotMDS(mymds,pch=19,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
 text(mymds,labels=colnames(y))
 mtext("pink=DFT1,blue=DFT2")
-
 
 y_DFT1 <- y[,colnames(y) %in% c("4906_1","4906_2","4906_3",
                                 "1426_1","1426_2","1426_3",
@@ -229,11 +209,13 @@ y_DFT2 <- y[,colnames(y) %in% c("RV_1","RV_2","RV_3",
                                 "SN_1","SN_2","SN_3",
                                 "TD549_1","TD549_2","TD549_3")]
 
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
 mdsDFT1 <- plotMDS(y_DFT1,plot=FALSE)
 plotMDS(mdsDFT1,pch=19,cex=3,col="pink",main="MDS plot",xlim=c(XMIN,XMAX))
 text(mdsDFT1,labels=colnames(y_DFT1))
 mtext("DFT1")
 
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
 mdsDFT2 <- plotMDS(y_DFT2,plot=FALSE)
 plotMDS(mdsDFT2,pch=19,cex=3,col="lightblue",main="MDS plot",xlim=c(XMIN,XMAX))
 text(mdsDFT2, labels=colnames(y_DFT2))
@@ -294,7 +276,7 @@ heatmap.2(as.matrix(mx),trace="none",scale="row",
 
 ## Combine the three replicates
 
-Sum replicates.
+Since the previous analysis shows nearly all genes as being DE, sum replicates instead.
 
 ```{r,de2}
 
@@ -421,9 +403,9 @@ for(i in 1:9){
 ## Enrichment analysis
 
 Need to get human homologs of these genes.
-These were obtained from Ensembl v109 biomart (website).
+These were obtained from Ensembl v109 using Biomart.
 
-```{r}
+```{r, hom}
 
 rownames(dge1) <- sapply(strsplit(rownames(dge1),"\\."),"[[",1)
 rownames(dge2) <- sapply(strsplit(rownames(dge2),"\\."),"[[",1)
@@ -439,11 +421,13 @@ gt <- hm2[,2:3]
 length(unique(gt$Tasmanian.devil.gene.stable.ID))
 length(unique(gt$Gene.name))
 
+for(i in 1:length(gt$Gene.name)){
+  if(gt$Gene.name[i]==""){gt$Gene.name[i] <- gt$Tasmanian.devil.gene.stable.ID[i]}
+}
+
 ```
 
-Now run mitch for DGE2.
-There will be a report generated that has more details on the enrichment analysis.
-The pathways are sourced from Reactome 7th July 2023.
+Now run mitch for DGE2. The pathways were sourced from Reactome on 7th July 2023.
 
 ```{r,mitch}
 
@@ -481,15 +465,21 @@ barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
   col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
   xlim=c(0,0.8))
 
+react_metabosets <- readRDS("../ref/reactome_metabo.rds")
+
+top_metabo <- filter(top, set %in% names(react_metabosets))
+
+barplot(rev(abs(top_metabo$s.dist)),horiz=TRUE,las=1,names.arg=rev(top_metabo$set),
+  main="Enriched Metabolic Pathways - REACTOME",cex.names=0.6,xlab="Enrichment Score",
+  col=c("blue","red","blue","red"),
+  xlim=c(0,0.8))
+
 ```
-
-Run mitch with curated metabolic pathways.
-
-KEGG gene sets under the "Metabolism" hierarchy were sourced from MSigDb in August 2023.
+KEGG gene sets were sourced from MSigDb on 14 September 2023.
 
 ```{r,mitch2}
 
-genesets2 <- gmt_import("../ref/gsea/gsea_KEGG.gmt")
+genesets2 <- gmt_import("../ref/c2.cp.kegg.v2023.1.Hs.symbols.gmt.txt")
 
 res2 <- mitch_calc(m2, genesets2, priority="effect",cores=16)
 
@@ -520,95 +510,43 @@ barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
   col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
   xlim=c(0,0.8))
 
-```
-Same with Reactome this time. Reactome gene sets of the metabolism hierarchy were sourced from the Reactome website in August 2023.
+kegg_metabosets <- gmt_import("../ref/gsea/gsea_KEGG.gmt")
 
-```{r, extract Metabolism pathways}
-hierarchy <- read.table("../ref/gsea/ReactomePathwaysRelation.txt", sep ="\t", header = F, dec =".")
-pathways <- read.delim("../ref/gsea/ReactomePathways.txt", header=FALSE)
+top_metabo <- filter(top, set %in% names(kegg_metabosets))
 
-hierarchy <- hierarchy[grep("HSA", hierarchy$V1), ] # keep only homo sapiens data
-pathways <- pathways[grep("HSA", pathways$V1), 1:2] 
-
-metabo_pathways <- "R-HSA-1430728" # reactome code for metabolism 
-
-# this is very bad coding - but it works
-# why 325? that is when while loop crashes because all branches of the hierarchy have been looped over
-# will have to change this if Reactome data is updated
-while(length(metabo_pathways) < 325){
-  for(i in 1:length(metabo_pathways)){
-    metabo_pathways <- unique(c(metabo_pathways,filter(hierarchy, V1 == metabo_pathways[i])$V2))
-    }
-  }
-
-mpathways <- c()
-for(i in 1:length(metabo_pathways)){mpathways <- c(mpathways,filter(pathways, V1 == metabo_pathways[i])$V2)}
-
-library(magrittr)
-genesets3 <- extract(genesets, mpathways)
-# remove empty sets (ie hierarchy exists but no gene set is associated to it)
-genesets3 <- genesets3[lapply(genesets3,length)>0]
-
-```
-
-```{r,mitch3}
-
-m3 <- mitch_import(dge2, DEtype="deseq2", geneTable=gt)
-res3 <- mitch_calc(m3, genesets3, priority="effect", cores=16)
-
-if ( !file.exists("mitch3.html") ) {
-  mitch_report(res3, "mitch3.html")
-}
-
-top <- subset(res3$enrichment_result,p.adjustANOVA<0.05)
-
-topup <- head(subset(top,s.dist>0),20)
-
-topup %>%
-  kbl(caption="Top 20 upregulated metabolic pathways") %>%
-  kable_paper("hover", full_width = F)
-
-topdn <- head(subset(top,s.dist<0),20)
-
-topdn %>%
-  kbl(caption="Top 20 downregulated metabolic pathways") %>%
-  kable_paper("hover", full_width = F)
-
-top2 <- rbind(head(topup,10),head(topdn,10))
-top2 <- top2[order(-top2$s.dist),]
-par(mar=c(5,15,5,2))
-
-barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
-  main="Top REACTOME Metabolic Pathways",cex.names=0.6,xlab="Enrichment Score",
-  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
+barplot(rev(abs(top_metabo$s.dist)),horiz=TRUE,las=1,names.arg=rev(top_metabo$set),
+  main="Enriched Metabolic Pathways - REACTOME",cex.names=0.6,xlab="Enrichment Score",
+  col=c("red"),
   xlim=c(0,0.8))
 
 ```
+
 ```{r, complexheatmap1}
 
 # see https://www.youtube.com/watch?v=ht1r34-ifVI for reference
 
 # find corresponding human genes to devil ENS IDs
-dge2$ENSSHAG <- rownames(dge2)
+dge3 <- dge2 
+dge3$ENSSHAG <- rownames(dge3)
 hm3 <- data.frame(ENSSHAG=hm2[,2],geneID=hm2[,3])
-dge2 <- left_join(dge2, hm3, by="ENSSHAG")
-dge2 <- unite(dge2,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
-dge2 <- unique(dge2)
-rownames(dge2) <- dge2$ENSSHAG_geneID
+dge3 <- left_join(dge3, hm3, by="ENSSHAG")
+dge3 <- unite(dge3,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
+dge3 <- unique(dge3)
+rownames(dge3) <- dge3$ENSSHAG_geneID
 
 # only plot significant DEGs
-dge2sig <- filter(dge2, padj < 0.05)
-dge2sig <- dge2sig[order(dge2sig$log2FoldChange, decreasing=TRUE),]
+dge3sig <- filter(dge3, padj < 0.05)
+dge3sig <- dge3sig[order(dge3sig$log2FoldChange, decreasing=TRUE),]
 
-mx <- dge2sig[,7:ncol(dge2sig)] # get normalised counts
+mx <- dge3sig[,7:ncol(dge3sig)] # get normalised counts
  
 mx.scaled <- t(apply(mx[,1:6], 1, scale)) # center and scale each column (Z-score)
 colnames(mx.scaled) <- colnames(mx[,1:6])
-log2FC <- as.matrix(dge2sig$log2FoldChange)
-rownames(log2FC) <- rownames(dge2sig)
+log2FC <- as.matrix(dge3sig$log2FoldChange)
+rownames(log2FC) <- rownames(dge3sig)
 colnames(log2FC) <- "logFC"
-mean <- as.matrix(dge2sig$baseMean)
-rownames(mean) <- rownames(dge2sig)
+mean <- as.matrix(dge3sig$baseMean)
+rownames(mean) <- rownames(dge3sig)
 colnames(mean) <- "AveExpr"
 
 col_logFC <- colorRamp2(c(min(log2FC),0,max(log2FC)), c("blue","white","red"))
@@ -777,6 +715,26 @@ h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), row_names_gp = gpar(fontsiz
 
 h <- h1 + h2 + h3
 h
+
+```
+
+Venn diagrams data of all DEGs, and DEGs linked to metabolism.
+```{r, Venn data}
+
+alldegs <- rownames(dge3sig)
+updegs <- rownames(filter(dge3sig, log2FoldChange > 0))
+downdegs <- rownames(filter(dge3sig, log2FoldChange < 0))
+metdegs <- rownames(met)
+
+venn_clines <- list(alldegs, updegs, downdegs, metdegs)
+saveRDS(venn_clines, file = "venn_clines.rds")
+
+# venn.diagram(
+#   x = list(alldegs, updegs, downdegs),
+#   category.names = c("All DEGs" , "Up", "Down"),
+#   filename = 'updown_venn_diagramm.png',
+#   output=TRUE
+# )
 
 ```
 
