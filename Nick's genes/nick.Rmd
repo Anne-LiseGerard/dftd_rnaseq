@@ -63,13 +63,16 @@ custom_heatmap <- function(zscore, fc, aveexpr, title) {
 
 ## Data wrangling
 
-Here we are working with full transcriptomes from three DFT1 (4906, C5065, 1426) and three DFT2 (RV, SN, TD549) cell lines.
+Here we are working with two datasets:
+(1) full unpublished transcriptomes from three DFT1 (4906, C5065, 1426) and three DFT2 (RV, SN, TD549) cell lines;
+(2) full transcriptomes (Patchet et al., 2020) from two DFT1 and two DFT2 tumour biopsies.
 
-First load the output from DESeq2 and the homology table.
+First load the outputs from DESeq2 and the homology table.
 
 ```{r, import data}
 
-clines_dge <- readRDS("clines_dge.rds") 
+clines_dge <- readRDS("clines_dge.rds") # cell lines
+biopsies_dge <- readRDS("biopsies_dge.rds") # biopsies
 hm <- readRDS("hm.rds") 
 
 nicks_genes <- read_excel("Custom_Panel_Gene_list.xlsx")
@@ -82,25 +85,28 @@ Then, merge gene names (hm) to ENSEMBL IDs (clines_dge). And filter Nick's genes
 
 clines_dge$ENSSHAG <- rownames(clines_dge)
 clines_dge <- right_join(clines_dge,hm,by="ENSSHAG")
+biopsies_dge$ENSSHAG_geneID <- rownames(biopsies_dge)
+biopsies_dge <- separate(biopsies_dge, col = ENSSHAG_geneID, into = c("ENSSHAG", "geneID"), sep = " ")
 
-filtered_dge <- filter(clines_dge, geneID %in% nicks_genes$Gene)
+clines_dge <- filter(clines_dge, geneID %in% nicks_genes$Gene)
+biopsies_dge <- filter(biopsies_dge, geneID %in% nicks_genes$Gene)
 
 ```
 
 ## Visualisation
 
-Volcanoplot and heatmap.
+Cell lines.
 
-```{r, plots}
+```{r, clines_plots}
 
 # --- volcanoplot ---
-make_volcano(filtered_dge,"DFT1 vs DFT2")
+make_volcano(clines_dge,"DFT1 vs DFT2 - cell lines")
 
 # --- complex heatmap ---
-dge <- unite(filtered_dge,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
-rownames(dge) <- dge$ENSSHAG_geneID
+clines_dge <- unite(clines_dge,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
+rownames(clines_dge) <- clines_dge$ENSSHAG_geneID
 
-dgesig <- filter(dge, padj < 0.05) # only significant degs
+dgesig <- filter(clines_dge, padj < 0.05) # only significant degs
 dgesig <- dgesig[order(dgesig$log2FoldChange, decreasing=TRUE),]
 
 mx <- dgesig[,7:ncol(dgesig)] # get normalised counts
@@ -128,8 +134,48 @@ top40AE <- as.matrix(c(head(mean,20),tail(mean,20)))
 rownames(top40AE) <- rownames(top40)
 colnames(top40AE) <- "AveExpr"
 
-custom_heatmap(top40, top40FC, top40AE, title = "TOP 40 - Nick's genes")
+custom_heatmap(top40, top40FC, top40AE, title = "TOP 40 - Nick's genes - cell lines")
 
 ```
+Biopsies.
 
+```{r, biopsies_plots}
 
+# --- volcanoplot ---
+make_volcano(biopsies_dge,"DFT1 vs DFT2 - tumour biopsies")
+
+# --- complex heatmap ---
+biopsies_dge <- unite(biopsies_dge,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
+rownames(biopsies_dge) <- biopsies_dge$ENSSHAG_geneID
+
+dgesig <- filter(biopsies_dge, padj < 0.05) # only significant degs
+dgesig <- dgesig[order(dgesig$log2FoldChange, decreasing=TRUE),]
+
+mx <- dgesig[,7:ncol(dgesig)] # get normalised counts
+ 
+mx.scaled <- t(apply(mx[,1:4], 1, scale)) # center and scale each column (Z-score)
+colnames(mx.scaled) <- colnames(mx[,1:4])
+log2FC <- as.matrix(dgesig$log2FoldChange)
+rownames(log2FC) <- rownames(dgesig)
+colnames(log2FC) <- "logFC"
+mean <- as.matrix(dgesig$baseMean)
+rownames(mean) <- rownames(dgesig)
+colnames(mean) <- "AveExpr"
+
+col_logFC <- colorRamp2(c(min(log2FC),0,max(log2FC)), c("blue","white","red"))
+col_AveExpr <- colorRamp2(c(quantile(mean)[1], quantile(mean)[4]), c("white","red"))
+
+ha <- HeatmapAnnotation(summary=anno_summary(gp=gpar(fill=2),height=unit(2, "cm")))
+
+# top 20 up & top 20 down
+top40 <- rbind(head(mx.scaled,20),tail(mx.scaled,20))
+top40FC <- as.matrix(rbind(head(log2FC,20),tail(log2FC,20)))
+rownames(top40FC) <- rownames(top40)
+colnames(top40FC) <- "logFC"
+top40AE <- as.matrix(c(head(mean,20),tail(mean,20)))
+rownames(top40AE) <- rownames(top40)
+colnames(top40AE) <- "AveExpr"
+
+custom_heatmap(top40, top40FC, top40AE, title = "TOP 40 - Nick's genes - tumour biopsies")
+
+```
