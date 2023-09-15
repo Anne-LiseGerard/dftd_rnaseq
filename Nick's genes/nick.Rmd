@@ -1,5 +1,5 @@
 ---
-title: "Nicks genes - cell lines transcriptomes"
+title: "Nicks genes"
 author: "Anne-Lise Gérard"
 date: "`r Sys.Date()`"
 output:
