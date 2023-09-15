@@ -179,3 +179,18 @@ colnames(top40AE) <- "AveExpr"
 custom_heatmap(top40, top40FC, top40AE, title = "TOP 40 - Nick's genes - tumour biopsies")
 
 ```
+
+Find common DEGs between biopsies and cell lines.
+
+```{r, shared}
+biopsies_sig <- filter(biopsies_dge, padj < 0.05)
+clines_sig <- filter(clines_dge, padj < 0.05)
+
+biopsies_shared <- filter(biopsies_sig, geneID %in% clines_sig$geneID)
+clines_shared <- filter(clines_sig, geneID %in% biopsies_sig$geneID)
+
+print(biopsies_shared$geneID)
+```
+
+
+
