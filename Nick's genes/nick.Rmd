@@ -189,7 +189,10 @@ clines_sig <- filter(clines_dge, padj < 0.05)
 biopsies_shared <- filter(biopsies_sig, geneID %in% clines_sig$geneID)
 clines_shared <- filter(clines_sig, geneID %in% biopsies_sig$geneID)
 
+<<<<<<< HEAD
 print(biopsies_shared$geneID)
+=======
+>>>>>>> 7b05bee9929b65d8a086c440bb69a3a073191853
 ```
 
 

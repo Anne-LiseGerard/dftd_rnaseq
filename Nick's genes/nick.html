@@ -1719,11 +1719,15 @@ custom_heatmap(top40, top40FC, top40AE, title = &quot;TOP 40 - Nick&#39;s genes 
 clines_sig &lt;- filter(clines_dge, padj &lt; 0.05)
 
 biopsies_shared &lt;- filter(biopsies_sig, geneID %in% clines_sig$geneID)
+<<<<<<< HEAD
 clines_shared &lt;- filter(clines_sig, geneID %in% biopsies_sig$geneID)
 
 print(biopsies_shared$geneID)</code></pre>
 <pre><code>##  [1] &quot;CNTF&quot;  &quot;STAT3&quot; &quot;CD36&quot;  &quot;CD9&quot;   &quot;CCN2&quot;  &quot;IL4I1&quot; &quot;F10&quot;   &quot;CXCL8&quot; &quot;IRF2&quot; 
 ## [10] &quot;PTX3&quot;  &quot;NOD2&quot;  &quot;ACKR3&quot; &quot;MMP2&quot;  &quot;MME&quot;   &quot;IRF8&quot;</code></pre>
+=======
+clines_shared &lt;- filter(clines_sig, geneID %in% biopsies_sig$geneID)</code></pre>
+>>>>>>> 7b05bee9929b65d8a086c440bb69a3a073191853
 </div>
 
 
