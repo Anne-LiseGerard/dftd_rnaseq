@@ -1,0 +1,135 @@
+---
+title: "Nicks genes - cell lines transcriptomes"
+author: "Anne-Lise Gérard"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    fig_width: 5
+    fig_height: 5
+theme: cosmo
+---
+
+```{r,pkg}
+
+suppressPackageStartupMessages({
+    library("dplyr")
+    library("tidyr")
+    library("gplots")
+    library("ComplexHeatmap")
+    library("circlize")
+    library("readxl")
+})
+
+```
+
+```{r, functions}
+make_volcano <- function(de,name) {
+    sig <- subset(de,padj<0.05)
+    N_SIG=nrow(sig)
+    N_UP=nrow(subset(sig,log2FoldChange>0))
+    N_DN=nrow(subset(sig,log2FoldChange<0))
+    DET=nrow(de)
+    HEADER=paste(N_SIG,"@5%FDR,", N_UP, "up", N_DN, "dn", DET, "detected")
+    plot(de$log2FoldChange,-log10(de$padj),cex=1,pch=19,col="darkgray",
+        main=name, xlab="log2 FC", ylab="-log10 pval")
+    mtext(HEADER)
+    grid()
+    points(sig$log2FoldChange,-log10(sig$padj),cex=1,pch=19,col="red")
+}
+
+custom_heatmap <- function(zscore, fc, aveexpr, title) {
+  h1 <- Heatmap(zscore, cluster_rows = F,
+              column_labels = colnames(zscore), name="Z-score",
+              cluster_columns = T)
+  h2 <- Heatmap(fc, row_labels = rownames(fc), row_names_gp = gpar(fontsize = 6),
+              cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
+              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                grid.text(round(as.numeric(fc[i, j],2)), x, y,gp=gpar(fontsize=6))
+              })
+  h3 <- Heatmap(aveexpr, row_labels = rownames(aveexpr), row_names_gp = gpar(fontsize = 6),
+              cluster_rows = F, name = "AveExpr", col=col_AveExpr,
+              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                grid.text(round(as.numeric(aveexpr[i, j],2)), x, y,gp=gpar(fontsize=6))},
+              column_title = title)
+
+  h <- h1 + h2 + h3
+  h
+}
+```
+
+
+## Data wrangling
+
+Here we are working with full transcriptomes from three DFT1 (4906, C5065, 1426) and three DFT2 (RV, SN, TD549) cell lines.
+
+First load the output from DESeq2 and the homology table.
+
+```{r, import data}
+
+clines_dge <- readRDS("clines_dge.rds") 
+hm <- readRDS("hm.rds") 
+
+nicks_genes <- read_excel("Custom_Panel_Gene_list.xlsx")
+
+```
+
+Then, merge gene names (hm) to ENSEMBL IDs (clines_dge). And filter Nick's genes from my dataset.
+
+```{r, filter}
+
+clines_dge$ENSSHAG <- rownames(clines_dge)
+clines_dge <- right_join(clines_dge,hm,by="ENSSHAG")
+
+filtered_dge <- filter(clines_dge, geneID %in% nicks_genes$Gene)
+
+```
+
+## Visualisation
+
+Volcanoplot and heatmap.
+
+```{r, plots}
+
+# --- volcanoplot ---
+make_volcano(filtered_dge,"DFT1 vs DFT2")
+
+# --- complex heatmap ---
+dge <- unite(filtered_dge,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
+rownames(dge) <- dge$ENSSHAG_geneID
+
+dgesig <- filter(dge, padj < 0.05) # only significant degs
+dgesig <- dgesig[order(dgesig$log2FoldChange, decreasing=TRUE),]
+
+mx <- dgesig[,7:ncol(dgesig)] # get normalised counts
+ 
+mx.scaled <- t(apply(mx[,1:6], 1, scale)) # center and scale each column (Z-score)
+colnames(mx.scaled) <- colnames(mx[,1:6])
+log2FC <- as.matrix(dgesig$log2FoldChange)
+rownames(log2FC) <- rownames(dgesig)
+colnames(log2FC) <- "logFC"
+mean <- as.matrix(dgesig$baseMean)
+rownames(mean) <- rownames(dgesig)
+colnames(mean) <- "AveExpr"
+
+col_logFC <- colorRamp2(c(min(log2FC),0,max(log2FC)), c("blue","white","red"))
+col_AveExpr <- colorRamp2(c(quantile(mean)[1], quantile(mean)[4]), c("white","red"))
+
+ha <- HeatmapAnnotation(summary=anno_summary(gp=gpar(fill=2),height=unit(2, "cm")))
+
+# top 20 up & top 20 down
+top40 <- rbind(head(mx.scaled,20),tail(mx.scaled,20))
+top40FC <- as.matrix(rbind(head(log2FC,20),tail(log2FC,20)))
+rownames(top40FC) <- rownames(top40)
+colnames(top40FC) <- "logFC"
+top40AE <- as.matrix(c(head(mean,20),tail(mean,20)))
+rownames(top40AE) <- rownames(top40)
+colnames(top40AE) <- "AveExpr"
+
+custom_heatmap(top40, top40FC, top40AE, title = "TOP 40 - Nick's genes")
+
+```
+
+
