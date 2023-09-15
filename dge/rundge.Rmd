@@ -93,6 +93,26 @@ make_volcano <- function(de,name) {
     points(sig$log2FoldChange,-log10(sig$padj),cex=1,pch=19,col="red")
 }
 
+custom_heatmap <- function(zscore, fc, aveexpr, title) {
+  h1 <- Heatmap(zscore, cluster_rows = F,
+              column_labels = colnames(zscore), name="Z-score",
+              cluster_columns = T)
+  h2 <- Heatmap(fc, row_labels = rownames(fc), row_names_gp = gpar(fontsize = 6),
+              cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
+              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                grid.text(round(as.numeric(fc[i, j],2)), x, y,gp=gpar(fontsize=6))
+              })
+  h3 <- Heatmap(aveexpr, row_labels = rownames(aveexpr), row_names_gp = gpar(fontsize = 6),
+              cluster_rows = F, name = "AveExpr", col=col_AveExpr,
+              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                grid.text(round(as.numeric(aveexpr[i, j],2)), x, y,gp=gpar(fontsize=6))},
+              column_title = title)
+
+  h <- h1 + h2 + h3
+  h
+}
+
+
 ```
 
 ## Load data
@@ -471,7 +491,7 @@ top_metabo <- filter(top, set %in% names(react_metabosets))
 
 barplot(rev(abs(top_metabo$s.dist)),horiz=TRUE,las=1,names.arg=rev(top_metabo$set),
   main="Enriched Metabolic Pathways - REACTOME",cex.names=0.6,xlab="Enrichment Score",
-  col=c("blue","red","blue","red"),
+  col=c("red","blue","red","blue"),
   xlim=c(0,0.8))
 
 ```
@@ -515,12 +535,14 @@ kegg_metabosets <- gmt_import("../ref/gsea/gsea_KEGG.gmt")
 top_metabo <- filter(top, set %in% names(kegg_metabosets))
 
 barplot(rev(abs(top_metabo$s.dist)),horiz=TRUE,las=1,names.arg=rev(top_metabo$set),
-  main="Enriched Metabolic Pathways - REACTOME",cex.names=0.6,xlab="Enrichment Score",
+  main="Enriched Metabolic Pathways - KEGG",cex.names=0.6,xlab="Enrichment Score",
   col=c("red"),
   xlim=c(0,0.8))
 
 ```
+## Visualisation
 
+Heatmaps.
 ```{r, complexheatmap1}
 
 # see https://www.youtube.com/watch?v=ht1r34-ifVI for reference
@@ -554,7 +576,96 @@ col_AveExpr <- colorRamp2(c(quantile(mean)[1], quantile(mean)[4]), c("white","re
 
 ha <- HeatmapAnnotation(summary=anno_summary(gp=gpar(fill=2),height=unit(2, "cm")))
 
-# ----- Top DEGs in all KEGG metabolic pathways ------
+# ----- Top DEGs in REACTOME metabolic pathways ------
+
+metabo <- c() # get all names of genes involved in metabolism
+for(i in 1:length(genesets)){metabo <- c(metabo,genesets[[i]])}
+metabo <- unique(metabo) # get rid of duplicates
+
+temp <- c() # get ENSSHAG and gene ID
+for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
+metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+
+met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
+metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
+metAE <- subset(mean, rownames(mean) %in% metabolism)
+
+# top 20 up & down
+met40 <- rbind(head(met,20),tail(met,20))
+met40FC <- as.matrix(c(head(metFC,20),tail(metFC,20)))
+rownames(met40FC) <- rownames(met40)
+colnames(met40FC) <- "logFC"
+met40AE <- as.matrix(c(head(metAE,20),tail(metAE,20)))
+rownames(met40AE) <- rownames(met40)
+colnames(met40AE) <- "AveExpr"
+
+custom_heatmap(met40, met40FC, met40AE, title = "TOP 40 - REACTOME metabolism")
+
+# ----- Degradation of cysteine and homocysteine -----
+
+metabo <- c() # get all names of genes involved in metabolism
+for(i in 1:length(genesets)){metabo <- c(metabo,genesets[["Degradation of cysteine and homocysteine"]])}
+metabo <- unique(metabo) # get rid of duplicates
+
+temp <- c() # get ENSSHAG and gene ID
+for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
+metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+
+met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
+metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
+metAE <- subset(mean, rownames(mean) %in% metabolism)
+
+custom_heatmap(met, metFC, metAE, title = "Degradation of cysteine and homocysteine - REACTOME")
+
+# ----- Cholesterol biosynthesis -----
+
+metabo <- c() # get all names of genes involved in metabolism
+for(i in 1:length(genesets)){metabo <- c(metabo,genesets[["Cholesterol biosynthesis"]])}
+metabo <- unique(metabo) # get rid of duplicates
+
+temp <- c() # get ENSSHAG and gene ID
+for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
+metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+
+met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
+metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
+metAE <- subset(mean, rownames(mean) %in% metabolism)
+
+custom_heatmap(met, metFC, metAE, title = "Cholesterol biosynthesis - REACTOME")
+
+# ----- Sulfur amino acid metabolism -----
+
+metabo <- c() # get all names of genes involved in metabolism
+for(i in 1:length(genesets)){metabo <- c(metabo,genesets[["Sulfur amino acid metabolism"]])}
+metabo <- unique(metabo) # get rid of duplicates
+
+temp <- c() # get ENSSHAG and gene ID
+for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
+metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+
+met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
+metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
+metAE <- subset(mean, rownames(mean) %in% metabolism)
+
+custom_heatmap(met, metFC, metAE, title = "Sulfur amino acid metabolism - REACTOME")
+
+# ----- Selenoamino acid metabolism -----
+
+metabo <- c() # get all names of genes involved in metabolism
+for(i in 1:length(genesets)){metabo <- c(metabo,genesets[["Selenoamino acid metabolism"]])}
+metabo <- unique(metabo) # get rid of duplicates
+
+temp <- c() # get ENSSHAG and gene ID
+for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
+metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+
+met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
+metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
+metAE <- subset(mean, rownames(mean) %in% metabolism)
+
+custom_heatmap(met, metFC, metAE, title = "Selenoamino acid metabolism - REACTOME")
+
+# ----- Top DEGs in KEGG metabolic pathways ------
 
 metabo <- c()
 for(i in 1:length(genesets2)){metabo <- c(metabo,genesets2[[i]])}
@@ -569,38 +680,23 @@ metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
 metAE <- subset(mean, rownames(mean) %in% metabolism)
 
 # top 20 up & down
-met40 <- rbind(met[1:20,],met[542:561,])
-met40FC <- as.matrix(c(metFC[1:20],metFC[542:561,]))
+met40 <- rbind(head(met,20),tail(met,20))
+met40FC <- as.matrix(c(head(metFC,20),tail(metFC,20)))
 rownames(met40FC) <- rownames(met40)
 colnames(met40FC) <- "logFC"
-met40AE <- as.matrix(c(metAE[1:20],metAE[542:561,]))
+met40AE <- as.matrix(c(head(metAE,20),tail(metAE,20)))
 rownames(met40AE) <- rownames(met40)
 colnames(met40AE) <- "AveExpr"
 
-h1 <- Heatmap(met40, cluster_rows = F,
-              column_labels = colnames(met40), name="Z-score",
-              cluster_columns = T)
-h2 <- Heatmap(met40FC, row_labels = rownames(met40FC), row_names_gp = gpar(fontsize = 6),
-              cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
-              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40FC[i, j],2)), x, y,gp=gpar(fontsize=6))
-              })
-h3 <- Heatmap(met40AE, row_labels = rownames(met40AE), row_names_gp = gpar(fontsize = 6),
-              cluster_rows = F, name = "AveExpr", col=col_AveExpr,
-              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40AE[i, j],2)), x, y,gp=gpar(fontsize=6))},
-              column_title = "TOP 40 UP & DOWN - KEGG METABOLISM")
+custom_heatmap(met40, met40FC, met40AE, title = "TOP 40 - KEGG metabolism")
 
-h <- h1 + h2 + h3
-h
+# ----- Steroid biosynthesis -----
 
-# ----- Top DEGs in all Reactome metabolic pathways ------
+metabo <- c() # get all names of genes involved in metabolism
+for(i in 1:length(genesets2)){metabo <- c(metabo,genesets2[["KEGG_STEROID_BIOSYNTHESIS"]])}
+metabo <- unique(metabo) # get rid of duplicates
 
-metabo <- c()
-for(i in 1:length(genesets3)){metabo <- c(metabo,genesets3[[i]])}
-metabo <- unique(metabo)
-
-temp <- c()
+temp <- c() # get ENSSHAG and gene ID
 for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
 metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
@@ -608,114 +704,7 @@ met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
 metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
 metAE <- subset(mean, rownames(mean) %in% metabolism)
 
-# top 20 up & down
-met40 <- rbind(met[1:20,],met[784:803,])
-met40FC <- as.matrix(c(metFC[1:20],metFC[784:803,]))
-rownames(met40FC) <- rownames(met40)
-colnames(met40FC) <- "logFC"
-met40AE <- as.matrix(c(metAE[1:20],metAE[784:803,]))
-rownames(met40AE) <- rownames(met40)
-colnames(met40AE) <- "AveExpr"
-
-h1 <- Heatmap(met40, cluster_rows = F,
-              column_labels = colnames(met40), name="Z-score",
-              cluster_columns = T)
-h2 <- Heatmap(met40FC, row_labels = rownames(met40FC), row_names_gp = gpar(fontsize = 6),
-              cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
-              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40FC[i, j],2)), x, y,gp=gpar(fontsize=6))
-              })
-h3 <- Heatmap(met40AE, row_labels = rownames(met40AE), row_names_gp = gpar(fontsize = 6),
-              cluster_rows = F, name = "AveExpr", col=col_AveExpr,
-              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(met40AE[i, j],2)), x, y,gp=gpar(fontsize=6))},
-              column_title = "TOP 40 UP & DOWN - REACTOME METABOLISM")
-
-h <- h1 + h2 + h3
-h
-
-# ----- KEGG steroid biosynthesis -----
-
-kegg <- genesets2[["KEGG_STEROID_BIOSYNTHESIS"]] 
-temp <- c()
-for(i in 1:length(kegg)){temp <- rbind(temp,filter(hm3, geneID==kegg[i]))}
-glycolysis <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
-
-glyc <- subset(mx.scaled, rownames(mx.scaled) %in% glycolysis)
-glycFC <- subset(log2FC, rownames(log2FC) %in% glycolysis)
-glycAE <- subset(mean, rownames(mean) %in% glycolysis)
-
-h1 <- Heatmap(glyc, cluster_rows = F,
-              column_labels = colnames(glyc), name="Z-score",
-              cluster_columns = T)
-h2 <- Heatmap(glycFC, row_labels = rownames(glycFC), row_names_gp = gpar(fontsize = 6),
-            cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
-            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(glycFC[i, j],2)), x, y,gp=gpar(fontsize=6))
-            })
-h3 <- Heatmap(glycAE, row_labels = rownames(glycAE), row_names_gp = gpar(fontsize = 6),
-            cluster_rows = F, name = "AveExpr", col=col_AveExpr,
-            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(glycAE[i, j],2)), x, y,gp=gpar(fontsize=6))},
-            column_title = "KEGG Steroid biosynthesis")
-
-h <- h1 + h2 + h3
-h
-
-# ----- Reactome Cholesterol biosynthesis -----
-cholesterol <- genesets3[["Cholesterol biosynthesis"]]
-temp <- c()
-for(i in 1:length(cholesterol)){temp <- rbind(temp,filter(hm3, geneID==cholesterol[i]))}
-cholesterol <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
-
-chol <- subset(mx.scaled, rownames(mx.scaled) %in% cholesterol)
-cholFC <- subset(log2FC, rownames(log2FC) %in% cholesterol)
-cholAE <- subset(mean, rownames(mean) %in% cholesterol)
-
-h1 <- Heatmap(chol, cluster_rows = F,
-              column_labels = colnames(chol), name="Z-score",
-              cluster_columns = T)
-h2 <- Heatmap(cholFC, row_labels = rownames(cholFC), row_names_gp = gpar(fontsize = 6),
-            cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
-            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholFC[i, j],2)), x, y,gp=gpar(fontsize=6))
-            })
-h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), row_names_gp = gpar(fontsize = 6),
-            cluster_rows = F, name = "AveExpr", col=col_AveExpr,
-            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholAE[i, j],2)), x, y,gp=gpar(fontsize=6))},
-            column_title = "Reactome Cholesterol biosynthesis")
-
-h <- h1 + h2 + h3
-h
-
-# ----- Reactome Degradation of cysteine and homocysteine -----
-cholesterol <- genesets3[["Degradation of cysteine and homocysteine"]]
-temp <- c()
-for(i in 1:length(cholesterol)){temp <- rbind(temp,filter(hm3, geneID==cholesterol[i]))}
-cholesterol <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
-
-chol <- subset(mx.scaled, rownames(mx.scaled) %in% cholesterol)
-cholFC <- subset(log2FC, rownames(log2FC) %in% cholesterol)
-cholAE <- subset(mean, rownames(mean) %in% cholesterol)
-
-h1 <- Heatmap(chol, cluster_rows = F,
-              column_labels = colnames(chol), name="Z-score",
-              cluster_columns = T)
-h2 <- Heatmap(cholFC, row_labels = rownames(cholFC), row_names_gp = gpar(fontsize = 6),
-            cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
-            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholFC[i, j],2)), x, y,gp=gpar(fontsize=6))
-            })
-h3 <- Heatmap(cholAE, row_labels = rownames(cholAE), row_names_gp = gpar(fontsize = 6),
-            cluster_rows = F, name = "AveExpr", col=col_AveExpr,
-            cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-              grid.text(round(as.numeric(cholAE[i, j],2)), x, y,gp=gpar(fontsize=6))},
-            column_title = "Reactome Degradation of cysteine and homocysteine")
-
-h <- h1 + h2 + h3
-h
-
+custom_heatmap(met, metFC, metAE, title = "Steroid biosynthesis - KEGG")
 ```
 
 Venn diagrams data of all DEGs, and DEGs linked to metabolism.
