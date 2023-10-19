@@ -1,0 +1,163 @@
+---
+title: "Cell line vs biopsies"
+author: "Anne-Lise Gérard"
+date: '`r Sys.Date()`'
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    fig_width: 3
+    fig_height: 3
+theme: cosmo
+---
+
+Source codes: https://github.com/Anne-LiseGerard/dftd_rnaseq
+
+```{r,pkg}
+
+suppressPackageStartupMessages({
+  library("VennDiagram")
+  library("ggplot2")
+  library("mitch")
+  library("dplyr")
+})
+
+```
+
+## Background
+
+Goal: compare expression profiles of DFT1 vs DFT2 tumours and cell lines.
+
+## Functions
+
+```{r, func}
+
+display_venn <- function(x, ...){
+  library(VennDiagram)
+  grid.newpage()
+  venn_object <- venn.diagram(x, filename = NULL, ...,
+                              height = 480 , width = 480 , 
+                              resolution = 300,
+                              lwd = 2,
+                              col=c('darkseagreen', 'darksalmon'),
+                              fill = c(alpha('darkseagreen',0.3), alpha('darksalmon',0.3)),
+                              cex = 1,
+                              fontfamily = "sans",
+                              cat.cex = 0.9,
+                              cat.default.pos = "outer",
+                              cat.dist = c(0.05, 0.05),
+                              cat.pos = c(-25,25),
+                              cat.fontfamily = "sans",
+                              cat.col = c('darkseagreen', 'darksalmon'),
+                              main.cex = 1,
+                              main.fontfamily = "sans",
+                              sub.cex = 0.8,
+                              sub.fontfamily = "sans",
+                              ext.text=FALSE)
+  grid.draw(venn_object)
+}
+
+# get rid of log files
+futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
+
+```
+
+## Load data
+
+Import lists of genes for Venn diagrams , DESEq2 outputs and genesets. 
+
+```{r, import}
+
+clines <- readRDS("~/dftd_RNAseq_annelise/dge/venn_clines.rds") # list genes cell lines
+biopsies <- readRDS("~/dftd_RNAseq_annelise/dge/venn_biopsies.rds") # list genes biopsies
+
+dge_clines <- readRDS("~/dftd_RNAseq_annelise/dge/dge_clines.rds") # DESeq2 cell lines
+dge_biopsies <- readRDS("~/dftd_RNAseq_annelise/dge/dge_biopsies.rds") # DESeq2 biopsies
+
+gt <- readRDS("~/dftd_RNAseq_annelise/dge/gt.rds") # homology
+genesets <- gmt_import("~/dftd_RNAseq_annelise/ref/ReactomePathways_2023-07-14.gmt") # reactome
+genesets2 <- gmt_import("~/dftd_RNAseq_annelise/ref/c2.cp.kegg.v2023.1.Hs.symbols.gmt.txt") # kegg
+
+```
+
+## Visualisation
+
+```{r, graphs}
+
+display_venn(x=list(clines[["allgenes"]], biopsies[["allgenes"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="All genes")
+display_venn(x=list(clines[["sigdegs"]], biopsies[["sigdegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="DEGs",
+             sub="(padj < 0.05)")
+display_venn(x=list(clines[["updegs"]], biopsies[["updegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Up DEGs",
+             sub="(padj < 0.05; logFC > 0)")
+display_venn(x=list(clines[["dndegs"]], biopsies[["dndegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Down DEGs",
+             sub="(padj < 0.05; logFC < 0)")
+
+# genes related to metabolism
+display_venn(x=list(clines[["metreactgenes"]], biopsies[["metreactgenes"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism genes - REACTOME")
+display_venn(x=list(clines[["metsigreactdegs"]], biopsies[["metsigreactdegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism DEGs - REACTOME",
+             sub="(padj < 0.05)")
+display_venn(x=list(clines[["metsigreactupdegs"]], biopsies[["metsigreactupdegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism up DEGs - REACTOME",
+             sub="(padj < 0.05; logFC > 0)")
+display_venn(x=list(clines[["metsigreactdndegs"]], biopsies[["metsigreactdndegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism down DEGs - REACTOME",
+             sub="(padj < 0.05; logFC < 0)")
+
+display_venn(x=list(clines[["metkegggenes"]], biopsies[["metkegggenes"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism genes - KEGG")
+display_venn(x=list(clines[["metsigkeggdegs"]], biopsies[["metsigkeggdegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism DEGs - KEGG",
+             sub="(padj < 0.05)")
+display_venn(x=list(clines[["metsigkeggupdegs"]], biopsies[["metsigkeggupdegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism up DEGs - KEGG",
+             sub="(padj < 0.05; logFC > 0)")
+display_venn(x=list(clines[["metsigkeggdndegs"]], biopsies[["metsigkeggdndegs"]]),
+             category.names = c("Cell lines" , "Biopsies"),
+             main="Metabolism down DEGs - KEGG",
+             sub="(padj < 0.05; logFC < 0)")
+
+
+```
+## Enrichment
+
+```{r, mitch}
+
+x <- list("de_clines"=dge_clines, "de_biopsies"=dge_biopsies)
+
+y <- mitch_import(x, "deseq2", geneTable = gt)
+
+# REACTOME
+res_react <- mitch_calc(y, genesets)
+
+if ( !file.exists("mitch_comp_react.html") ) {
+  mitch_report(res_react, "mitch_comp_react.html")
+}
+
+# KEGG
+res_kegg <- mitch_calc(y, genesets2)
+
+if ( !file.exists("mitch_comp_kegg.html") ) {
+  mitch_report(res_kegg, "mitch_comp_kegg.html")
+}
+
+```
+
+
