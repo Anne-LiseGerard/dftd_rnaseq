@@ -136,7 +136,12 @@ display_venn(x=list(clines[["metsigkeggdndegs"]], biopsies[["metsigkeggdndegs"]]
 
 
 ```
+
 ## Enrichment
+
+The pathway 'Response to metal ions' causes a bug as the genenames appear to map to the same
+human gene.
+I think the duplicate data is causing problems.
 
 ```{r, mitch}
 
@@ -145,6 +150,10 @@ x <- list("de_clines"=dge_clines, "de_biopsies"=dge_biopsies)
 y <- mitch_import(x, "deseq2", geneTable = gt)
 
 # REACTOME
+
+setnames <-c( "Response to metal ions", "Metallothioneins bind metals")
+genesets <- genesets[! names(genesets) %in% setnames]
+
 res_react <- mitch_calc(y, genesets)
 
 if ( !file.exists("mitch_comp_react.html") ) {
@@ -161,3 +170,10 @@ if ( !file.exists("mitch_comp_kegg.html") ) {
 ```
 
 
+## Session information
+
+```{r,session}
+
+sessionInfo()
+
+```
