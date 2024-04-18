@@ -7,8 +7,8 @@ output:
     toc: true
     toc_float: true
     code_folding: hide
-    fig_width: 3
-    fig_height: 3
+    fig_width: 5
+    fig_height: 5
 theme: cosmo
 ---
 
@@ -21,7 +21,15 @@ suppressPackageStartupMessages({
   library("ggplot2")
   library("mitch")
   library("dplyr")
+  library("kableExtra")
+  library("limma")
+  library("usefun")
+  library("viridis")
+  library("ggh4x")
+  library("tidyr")
 })
+
+knitr::opts_chunk$set(dev = 'svg')
 
 ```
 
@@ -40,8 +48,8 @@ display_venn <- function(x, ...){
                               height = 480 , width = 480 , 
                               resolution = 300,
                               lwd = 2,
-                              col=c('darkseagreen', 'darksalmon'),
-                              fill = c(alpha('darkseagreen',0.3), alpha('darksalmon',0.3)),
+                              col=c("#B3B9DF", "#DDAFB7"),
+                              fill = c(alpha("#B3B9DF",0.3), alpha("#DDAFB7",0.3)),
                               cex = 1,
                               fontfamily = "sans",
                               cat.cex = 0.9,
@@ -49,7 +57,7 @@ display_venn <- function(x, ...){
                               cat.dist = c(0.05, 0.05),
                               cat.pos = c(-25,25),
                               cat.fontfamily = "sans",
-                              cat.col = c('darkseagreen', 'darksalmon'),
+                              cat.col = c("#B3B9DF", "#DDAFB7"),
                               main.cex = 1,
                               main.fontfamily = "sans",
                               sub.cex = 0.8,
@@ -79,11 +87,71 @@ gt <- readRDS("~/dftd_RNAseq_annelise/dge/gt.rds") # homology
 genesets <- gmt_import("~/dftd_RNAseq_annelise/ref/ReactomePathways_2023-07-14.gmt") # reactome
 genesets2 <- gmt_import("~/dftd_RNAseq_annelise/ref/c2.cp.kegg.v2023.1.Hs.symbols.gmt.txt") # kegg
 
+# MDS data
+y_clines <- readRDS("~/dftd_RNAseq_annelise/dge/y_clines.rds")
+y_biopsies <- readRDS("~/dftd_RNAseq_annelise/dge/y_biopsies.rds")
+
 ```
+
+## MDS
+
+```{r, MDS}
+#MDS=PCoA
+
+ss_clines <- read.table("/mnt/data/annelise/dftd_RNAseq_annelise/ss.tsv",sep="\t",fill=TRUE,header=TRUE)
+
+ss_biopsies <- read.table("/mnt/data/annelise/dftd_RNAseq_annelise/ss_patchett.txt",sep="\t",fill=TRUE,header=TRUE)
+
+ss <- data.frame(run=c(ss_clines$C, ss_biopsies$run_accession),
+                 ID=c(ss_clines$ClientID, ss_biopsies$sample_id),
+                 DFT=c(ss_clines$DFT, ss_biopsies$DFT),
+                 replicate=(c(ss_clines$Replicate, c(1,1,2,2,1,1,2,2,2,2,1,1,1,2))),
+                 sample_type=c(rep("cell_line",19), ss_biopsies$sample_type))
+
+ss <- na.omit(ss)
+
+ss$DFT <- as.factor(ss$DFT)
+
+ss %>%
+  kbl(caption="Sample sheet for all samples") %>%
+  kable_paper("hover", full_width = F)
+
+y <- cbind(y_clines, y_biopsies)
+y <- y[,-c(27:32)] # remove Patchett cell lines
+
+cs <- colSums(y)
+cs <- cs[order(cs)]
+
+par(mar=c(5,10,5,2))
+
+barplot(cs,main="All samples",horiz=TRUE,las=1)
+
+cols <- ss$DFT
+cols <- gsub("DFT1","#B3B9DF",cols)
+cols <- gsub("DFT2","#DDAFB7",cols)
+
+mymds <- plotMDS(y,plot=FALSE)
+
+# fix the xlims
+XMIN=min(mymds$x)
+XMAX=max(mymds$x)
+XMID=(XMAX+XMIN)/2
+XMIN <- XMID + (XMIN-XMID)*1.1
+XMAX <- XMID+(XMAX-XMID)*1.1
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+plotMDS(mymds,pch=19,cex=3,col=cols,main="Cell lines and Tumour biopsies",xlim=c(XMIN,XMAX))
+text(mymds,labels=colnames(y))
+mtext("blue=DFT1,pink=DFT2")
+
+
+```
+
+
 
 ## Visualisation
 
-```{r, graphs}
+```{r, graphs, fig.dim = c(2.5, 2.5)}
 
 display_venn(x=list(clines[["allgenes"]], biopsies[["allgenes"]]),
              category.names = c("Cell lines" , "Biopsies"),
@@ -137,38 +205,196 @@ display_venn(x=list(clines[["metsigkeggdndegs"]], biopsies[["metsigkeggdndegs"]]
 
 ```
 
+
 ## Enrichment
 
-The pathway 'Response to metal ions' causes a bug as the genenames appear to map to the same
-human gene.
-I think the duplicate data is causing problems.
+```{r, mitch, fig.dim = c(10, 10)}
 
-```{r, mitch}
+gsea_clines <- readRDS("~/dftd_RNAseq_annelise/dge/gsea_clines.rds")
+gsea_biopsies <- readRDS("~/dftd_RNAseq_annelise/dge/gsea_biopsies.rds")
 
-x <- list("de_clines"=dge_clines, "de_biopsies"=dge_biopsies)
+gsea_common <- intersect(gsea_clines$set,gsea_biopsies$set)
+
+gsea_clines_only <- outersect(gsea_clines$set, gsea_common)
+gsea_biopsies_only <- outersect(gsea_biopsies$set, gsea_common)
+
+gsea_clines$dataset <- "Cell lines"
+gsea_biopsies$dataset <- "Biopsies"
+gsea_all <- rbind(gsea_clines,gsea_biopsies)
+
+gsea_common_df <- filter(gsea_all, set %in% gsea_common)
+
+ggplot(gsea_common_df, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustANOVA, size = setSize, shape=dataset)) + 
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  xlab("s dist") + ylab("pathway") + ggtitle("Common") + 
+  theme_bw()+
+  theme(legend.position = c(-1.8,0.8))
+
+```
+```{r, mitch2, fig.dim = c(10, 6)}
+
+gsea_clines_m <- readRDS("~/dftd_RNAseq_annelise/dge/gsea_clines_metabo.rds")
+gsea_biopsies_m <- readRDS("~/dftd_RNAseq_annelise/dge/gsea_biopsies_metabo.rds")
+
+gsea_clines_m$dataset <- "Cell lines"
+gsea_biopsies_m$dataset <- "Biopsies"
+
+gsea_all_m <- rbind(gsea_clines_m,gsea_biopsies_m)
+gsea_all_m$dataset <- factor(gsea_all_m$dataset, levels=c("Cell lines","Biopsies"))
+
+ggplot(gsea_all_m, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustANOVA, size = setSize)) + 
+  facet_wrap(~dataset, ncol=1, nrow=2, scales = "free") +
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  xlab("s dist") + ylab("pathway") + ggtitle("Metabolism") + 
+  theme_bw()
+
+gsea_common_df$plot <- "Common pathways"
+gsea_all_m$plot <- "Metabolic pathways"
+
+gsea_plots <- rbind(gsea_all_m,gsea_common_df)
+gsea_plots$plot <- factor(gsea_plots$plot, levels=c("Metabolic pathways","Common pathways"))
+
+# ggplot(gsea_plots, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustANOVA, size = setSize, shape=dataset)) + 
+#   facet_wrap(~plot, ncol=1, nrow=2, scales = "free") +
+#   force_panelsizes(rows = c(1, 2)) +
+#   geom_point(stat = 'identity', alpha=0.75) + 
+#   scale_size_continuous(breaks=c(10, 25, 50, 100, 500))+
+#   scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+#   xlab("s dist") + ylab("") + ggtitle("") + 
+#   theme_bw()#+
+#   #theme(legend.position = "top")
+
+```
+
+```{r, mitch_comp}
+
+x <- list("Cell lines"=dge_clines, "Biopsies"=dge_biopsies)
 
 y <- mitch_import(x, "deseq2", geneTable = gt)
 
 # REACTOME
-
+#The pathway 'Response to metal ions' causes a bug as the genenames appear to map to the same human gene.
+#I think the duplicate data is causing problems.
 setnames <-c( "Response to metal ions", "Metallothioneins bind metals")
 genesets <- genesets[! names(genesets) %in% setnames]
 
-res_react <- mitch_calc(y, genesets)
+res_react <- mitch_calc(y, genesets, resrows = 100)
 
 if ( !file.exists("mitch_comp_react.html") ) {
   mitch_report(res_react, "mitch_comp_react.html")
 }
 
-# KEGG
-res_kegg <- mitch_calc(y, genesets2)
+mitch_plots(res_react, "mitch_comp_react.pdf")
 
-if ( !file.exists("mitch_comp_kegg.html") ) {
-  mitch_report(res_kegg, "mitch_comp_kegg.html")
-}
+gsea_signif <- filter(res_react$enrichment_result, p.adjustMANOVA < 0.05)
 
+react_metabosets <- readRDS("~/dftd_RNAseq_annelise/ref/reactome_metabo.rds")
+
+metabo_gsea <- filter(gsea_signif, set %in% names(react_metabosets))
+metabo_gsea <- gather(metabo_gsea, "dataset","s.dist", 4:5)
+metabo_gsea[metabo_gsea == "s.Cell.lines"] <- "Cell lines"
+metabo_gsea[metabo_gsea == "s.Biopsies"] <- "Biopsies"
 ```
 
+```{r, mitch_comp1, fig.dim = c(10, 4)}
+ggplot(metabo_gsea, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustMANOVA, size = setSize, shape=dataset)) + 
+  #facet_wrap(~dataset, ncol=1, nrow=2, scales = "free") +
+  geom_vline(xintercept = 0, colour="gray", linetype = "longdash")+
+  scale_size_continuous(breaks=c(10, 50, 100, 500, 1000))+
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  xlab("s dist") + ylab("pathway") + ggtitle("Metabolism") + 
+  theme_bw()
+```
+
+```{r, mitch_comp2, fig.dim = c(12, 18)}
+gsea_upboth <- filter(gsea_signif, s.Cell.lines > 0 & s.Biopsies > 0)
+gsea_upboth <- gather(gsea_upboth, "dataset","s.dist", 4:5)
+gsea_upboth[gsea_upboth == "s.Cell.lines"] <- "Cell lines"
+gsea_upboth[gsea_upboth == "s.Biopsies"] <- "Biopsies"
+
+gsea_downboth <- filter(gsea_signif, s.Cell.lines < 0 & s.Biopsies < 0)
+gsea_downboth <- gather(gsea_downboth, "dataset","s.dist", 4:5)
+gsea_downboth[gsea_downboth == "s.Cell.lines"] <- "Cell lines"
+gsea_downboth[gsea_downboth == "s.Biopsies"] <- "Biopsies"
+
+gsea_upcelllines_downbiopsies <- filter(gsea_signif, s.Cell.lines > 0 & s.Biopsies < 0)
+gsea_upcelllines_downbiopsies <- gather(gsea_upcelllines_downbiopsies, "dataset","s.dist", 4:5)
+gsea_upcelllines_downbiopsies[gsea_upcelllines_downbiopsies == "s.Cell.lines"] <- "Cell lines"
+gsea_upcelllines_downbiopsies[gsea_upcelllines_downbiopsies == "s.Biopsies"] <- "Biopsies"
+
+gsea_upbiopsies_downcelllines <- filter(gsea_signif, s.Cell.lines < 0 & s.Biopsies > 0)
+gsea_upbiopsies_downcelllines <- gather(gsea_upbiopsies_downcelllines, "dataset","s.dist", 4:5)
+gsea_upbiopsies_downcelllines[gsea_upbiopsies_downcelllines == "s.Cell.lines"] <- "Cell lines"
+gsea_upbiopsies_downcelllines[gsea_upbiopsies_downcelllines == "s.Biopsies"] <- "Biopsies"
+
+ggplot(gsea_upboth, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustMANOVA, size = setSize, shape=dataset)) + 
+  #facet_wrap(~dataset, ncol=1, nrow=2, scales = "free") +
+  scale_size_continuous(breaks=c(10, 50, 100, 500, 1000))+
+  geom_vline(xintercept = 0, colour="gray", linetype = "longdash")+
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  xlab("s dist") + ylab("pathway") + ggtitle("Concordant upregulation") + 
+  theme_bw()
+```
+
+```{r, mitch_comp3, fig.dim = c(7, 4)}
+ggplot(gsea_downboth, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustMANOVA, size = setSize, shape=dataset)) + 
+  #facet_wrap(~dataset, ncol=1, nrow=2, scales = "free") +
+  geom_vline(xintercept = 0, colour="gray", linetype = "longdash")+
+  scale_size_continuous(breaks=c(10, 50, 100, 500, 1000))+
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  xlab("s dist") + ylab("pathway") + ggtitle("Concordant downregulation") + 
+  theme_bw()
+```
+
+```{r, mitch_comp4, fig.dim = c(7, 4)}
+ggplot(gsea_upcelllines_downbiopsies, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustMANOVA, size = setSize, shape=dataset)) + 
+  #facet_wrap(~dataset, ncol=1, nrow=2, scales = "free") +
+  geom_vline(xintercept = 0, colour="gray", linetype = "longdash")+
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  scale_size_continuous(breaks=c(10, 50, 100, 500, 1000))+
+  xlab("s dist") + ylab("pathway") + ggtitle("Upregulation in cell lines \nDown regulation in biopsies") + 
+  theme_bw()
+```
+
+```{r, mitch_comp5, fig.dim = c(12, 6)}
+ggplot(gsea_upbiopsies_downcelllines, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustMANOVA, size = setSize, shape=dataset)) + 
+  #facet_wrap(~dataset, ncol=1, nrow=2, scales = "free") +
+  geom_vline(xintercept = 0, colour="gray", linetype = "longdash")+
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  scale_size_continuous(breaks=c(10, 50, 100, 500, 1000))+
+  xlab("s dist") + ylab("pathway") + ggtitle("Downregulation in cell lines \nUp regulation in biopsies") + 
+  theme_bw()
+```
+
+```{r, mitch_comp6, fig.dim = c(12, 40)}
+gsea_upboth$plot <- "Concordant positive enrichment"
+gsea_upbiopsies_downcelllines$plot <- "Negative enrichment in cell lines \nPositive enrichment in biopsies"
+gsea_upcelllines_downbiopsies$plot <- "Positive enrichment in cell lines \nNegative enrichment in biopsies"
+gsea_downboth$plot <- "Concordant negative enrichment"
+metabo_gsea$plot <- "Metabolism"
+gsea_x <- rbind(gsea_upboth,gsea_upbiopsies_downcelllines, gsea_upcelllines_downbiopsies, gsea_downboth, metabo_gsea)
+
+library(ggforce)
+
+ggplot(gsea_x, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustMANOVA, size = setSize, shape=dataset)) + 
+  facet_wrap(~plot, scales = "free", ncol=1, nrow=5) +
+  scale_size_continuous(breaks=c(10, 50, 100, 500, 1000))+
+  force_panelsizes(rows = c(3.5, 71.5, 11, 7, 2))+
+  geom_vline(xintercept = 0, colour="gray", linetype = "longdash")+
+  geom_point(stat = 'identity') + 
+  scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
+  xlab("s dist") + ylab("") + ggtitle("") + 
+  theme_bw()
+
+
+```
 
 ## Session information
 
