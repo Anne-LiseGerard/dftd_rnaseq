@@ -1,14 +1,16 @@
 ---
 title: "Cell line vs biopsies"
 author: "Anne-Lise Gérard"
-date: '`r Sys.Date()`'
+date: "`r Sys.Date()`"
 output:
   html_document:
-    toc: true
-    toc_float: true
+    toc: yes
+    toc_float: yes
     code_folding: hide
     fig_width: 5
     fig_height: 5
+  pdf_document:
+    toc: yes
 theme: cosmo
 ---
 
@@ -27,15 +29,15 @@ suppressPackageStartupMessages({
   library("viridis")
   library("ggh4x")
   library("tidyr")
+
 })
 
 knitr::opts_chunk$set(dev = 'svg')
-
 ```
 
 ## Background
 
-Goal: compare expression profiles of DFT1 vs DFT2 tumours and cell lines.
+Goal: compare expression profiles of DFT1 vs DFT2 tumour biopsies and cell lines.Two contrasts: DFT1 vs DFT2, then compare that first contrast in cell lines vs biopsies.
 
 ## Functions
 
@@ -130,6 +132,10 @@ cols <- ss$DFT
 cols <- gsub("DFT1","#B3B9DF",cols)
 cols <- gsub("DFT2","#DDAFB7",cols)
 
+pchs <- ss$sample_type
+pchs <- gsub("cell_line",19,pchs)
+pchs <- gsub("biopsy",17,pchs)
+
 mymds <- plotMDS(y,plot=FALSE)
 
 # fix the xlims
@@ -140,8 +146,10 @@ XMIN <- XMID + (XMIN-XMID)*1.1
 XMAX <- XMID+(XMAX-XMID)*1.1
 
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
-plotMDS(mymds,pch=19,cex=3,col=cols,main="Cell lines and Tumour biopsies",xlim=c(XMIN,XMAX))
+plotMDS(mymds,pch=as.numeric(pchs),cex=3,col=cols,main="Cell lines and Tumour biopsies",xlim=c(XMIN,XMAX))
 text(mymds,labels=colnames(y))
+
+
 mtext("blue=DFT1,pink=DFT2")
 
 
@@ -150,6 +158,8 @@ mtext("blue=DFT1,pink=DFT2")
 
 
 ## Visualisation
+
+Some Venn diagrams to compare gene expression.
 
 ```{r, graphs, fig.dim = c(2.5, 2.5)}
 
@@ -186,27 +196,12 @@ display_venn(x=list(clines[["metsigreactdndegs"]], biopsies[["metsigreactdndegs"
              main="Metabolism down DEGs - REACTOME",
              sub="(padj < 0.05; logFC < 0)")
 
-display_venn(x=list(clines[["metkegggenes"]], biopsies[["metkegggenes"]]),
-             category.names = c("Cell lines" , "Biopsies"),
-             main="Metabolism genes - KEGG")
-display_venn(x=list(clines[["metsigkeggdegs"]], biopsies[["metsigkeggdegs"]]),
-             category.names = c("Cell lines" , "Biopsies"),
-             main="Metabolism DEGs - KEGG",
-             sub="(padj < 0.05)")
-display_venn(x=list(clines[["metsigkeggupdegs"]], biopsies[["metsigkeggupdegs"]]),
-             category.names = c("Cell lines" , "Biopsies"),
-             main="Metabolism up DEGs - KEGG",
-             sub="(padj < 0.05; logFC > 0)")
-display_venn(x=list(clines[["metsigkeggdndegs"]], biopsies[["metsigkeggdndegs"]]),
-             category.names = c("Cell lines" , "Biopsies"),
-             main="Metabolism down DEGs - KEGG",
-             sub="(padj < 0.05; logFC < 0)")
-
-
 ```
 
 
 ## Enrichment
+
+Here we will perform a multi-contrast enrichment analysis (DFT1 vs DFT2 AND biopsies vs cell lines).
 
 ```{r, mitch, fig.dim = c(10, 10)}
 
@@ -244,7 +239,7 @@ gsea_all_m <- rbind(gsea_clines_m,gsea_biopsies_m)
 gsea_all_m$dataset <- factor(gsea_all_m$dataset, levels=c("Cell lines","Biopsies"))
 
 ggplot(gsea_all_m, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustANOVA, size = setSize)) + 
-  facet_wrap(~dataset, ncol=1, nrow=2, scales = "free") +
+  facet_grid(~dataset,scales = "free") +
   geom_point(stat = 'identity') + 
   scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
   xlab("s dist") + ylab("pathway") + ggtitle("Metabolism") + 
@@ -256,23 +251,17 @@ gsea_all_m$plot <- "Metabolic pathways"
 gsea_plots <- rbind(gsea_all_m,gsea_common_df)
 gsea_plots$plot <- factor(gsea_plots$plot, levels=c("Metabolic pathways","Common pathways"))
 
-# ggplot(gsea_plots, aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustANOVA, size = setSize, shape=dataset)) + 
-#   facet_wrap(~plot, ncol=1, nrow=2, scales = "free") +
-#   force_panelsizes(rows = c(1, 2)) +
-#   geom_point(stat = 'identity', alpha=0.75) + 
-#   scale_size_continuous(breaks=c(10, 25, 50, 100, 500))+
-#   scale_color_viridis(option="mako", direction=1,limits = c(0, 0.05)) +
-#   xlab("s dist") + ylab("") + ggtitle("") + 
-#   theme_bw()#+
-#   #theme(legend.position = "top")
-
 ```
 
 ```{r, mitch_comp}
 
+rownames(dge_clines) <- gsub("\\..*","", rownames(dge_clines))
+
 x <- list("Cell lines"=dge_clines, "Biopsies"=dge_biopsies)
 
 y <- mitch_import(x, "deseq2", geneTable = gt)
+
+genesets <- readRDS(file = "~/dftd_RNAseq_annelise/ref/gsea/reactome_plus_custom.RDS")
 
 # REACTOME
 #The pathway 'Response to metal ions' causes a bug as the genenames appear to map to the same human gene.
@@ -286,7 +275,7 @@ if ( !file.exists("mitch_comp_react.html") ) {
   mitch_report(res_react, "mitch_comp_react.html")
 }
 
-mitch_plots(res_react, "mitch_comp_react.pdf")
+#mitch_plots(res_react, "mitch_comp_react.pdf")
 
 gsea_signif <- filter(res_react$enrichment_result, p.adjustMANOVA < 0.05)
 

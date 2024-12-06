@@ -36,7 +36,6 @@ suppressPackageStartupMessages({
     library("ggplot2")
     library("viridis")
     library("enrichplot")
-    library("SBGNview")
 })
 
 knitr::opts_chunk$set(dev = 'svg')
@@ -61,26 +60,7 @@ ss %>%
 ## Functions
 
 ```{r, func}
-
-maplot <- function(de,contrast_name) {
-  sig <-subset(de, padj < 0.05 )
-  up <-rownames(subset(de, padj < 0.05 & log2FoldChange > 0))
-  dn <-rownames(subset(de, padj < 0.05 & log2FoldChange < 0))
-  GENESUP <- length(up)
-  GENESDN <- length(dn)
-  DET=nrow(de)
-  SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down", DET, "detected")
-  ns <-subset(de, padj > 0.05 )
-  plot(log2(de$baseMean),de$log2FoldChange,
-       xlab="log2 basemean", ylab="log2 foldchange",
-       pch=19, cex=1, col="dark gray",
-       main=contrast_name, cex.main=0.7)
-  points(log2(sig$baseMean),sig$log2FoldChange,
-         pch=19, cex=1, col="#5297A7")
-  mtext(SUBHEADER,cex = 0.7)
-  grid()
-}
-
+# volcanoplots
 make_volcano <- function(de,name) {
     sig <- subset(de,padj<0.05)
     N_SIG=nrow(sig)
@@ -95,23 +75,22 @@ make_volcano <- function(de,name) {
     points(sig$log2FoldChange,-log10(sig$padj),cex=1,pch=19,col="#5297A7")
 }
 
+#heatmaps
 custom_heatmap <- function(zscore, fc, aveexpr, title) {
   h1 <- Heatmap(zscore, cluster_rows = F,
               column_labels = colnames(zscore), name="Z-score",
-              cluster_columns = T,
-              col= colorRamp2(c(min(zscore),0,max(zscore)), hcl_palette = "Blue-Red 2"))
+              cluster_columns = T, 
+              column_names_gp = gpar(fontsize = 7, fontface="bold"),
+              col=colorRamp2(c(-1.5,0,1.5), hcl_palette = "Blue-Red 2"),
+              heatmap_legend_param = list(title = "Z-score", at = seq(-1.5, 1.5, 0.5)))
   h2 <- Heatmap(fc, row_labels = rownames(fc), row_names_gp = gpar(fontsize = 6),
-              cluster_rows = F, name="logFC", top_annotation = ha, col = col_logFC,
+              cluster_rows = F, name="logFC", col = col_logFC,column_names_gp = gpar(fontsize =7,fontface="bold"),
               cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                grid.text(round(as.numeric(fc[i, j],2)), x, y,gp=gpar(fontsize=6))
-              }, column_title = title)
-  # h3 <- Heatmap(aveexpr, row_labels = rownames(aveexpr), row_names_gp = gpar(fontsize = 6),
-  #             cluster_rows = F, name = "AveExpr", col=col_AveExpr,
-  #             cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-  #               grid.text(round(as.numeric(aveexpr[i, j],2)), x, y,gp=gpar(fontsize=6))},
-  #             column_title = title)
+                grid.text(round(as.numeric(fc[i, j],2),2), x, y,gp=gpar(fontsize=6))
+              }, column_title = title, 
+              heatmap_legend_param = list(title = "logFC", at = seq(-20, 20, 10)))
 
-  h <- h1 + h2 #+ h3
+  h <- h1 + h2
   h
 }
 
@@ -145,6 +124,8 @@ gn_old <- gn_old[order(gn_old$V1),]
 
 ```
 
+Load homology table.
+
 ```{r, homology}
 
 hm <- read.table("../ref/mart_export_ensembl109_2023-07-14.txt",sep="\t",header=TRUE)
@@ -176,9 +157,7 @@ y_old$gene = NULL
 
 ## Quality control
 
-Samples with <1M reads should be omitted.
-Will also round values to integers.
-Using the new genome yields a higher number of mapped reads.
+Samples with <1M reads should be omitted. Will also round values to integers. Using the new genome yields a higher number of mapped reads (this data was originally mapped on the DEVIL 7.0 assembly in Patchett 2019).
 
 ```{r, qc1}
 
@@ -205,11 +184,7 @@ y_old <- round(y_old)
 
 ## MDS
 
-This will help us to visualise the sources of variability in the overall dataset.
-
-Plot MDS. Also fix the sample names.
-
-Plot MDS by DFT.
+This will help us to visualise the sources of variability in the overall dataset. Plot MDS. Also fix the sample names. Plot MDS by DFT. Plot MDS by cell lines and biiopsies. Decided to only include biopsies for rest of analysis.
 
 ```{r, plotmds1}
 
@@ -252,11 +227,11 @@ XMAX=max(mymds$x)
 XMID=(XMAX+XMIN)/2
 XMIN <- XMID + (XMIN-XMID)*1.1
 XMAX <- XMID+(XMAX-XMID)*1.1
-plotMDS(mymds,pch=19,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
+plotMDS(mymds,pch=17,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
 text(mymds,labels=colnames(y))
 mtext("blue=DFT1, pink=DFT2")
 
-plotMDS(mymds_old,pch=19,cex=3,col=cols,main="MDS plot - old genome",xlim=c(XMIN,XMAX))
+plotMDS(mymds_old,pch=17,cex=3,col=cols,main="MDS plot - old genome",xlim=c(XMIN,XMAX))
 text(mymds_old,labels=colnames(y_old))
 mtext("blue=DFT1, pink=DFT2")
 
@@ -271,22 +246,22 @@ y_cline <- y[,colnames(y) %in% c( "C5065_UT_01", "C5065_UT_02",
                                 "sha_DFT2_RV_1-1","sha_DFT2_RV_1-2","sha_DFT2_RV_2-1","sha_DFT2_RV_2-2")] 
 
 mdsDFT1 <- plotMDS(y_DFT1,plot=FALSE)
-plotMDS(mdsDFT1,pch=19,cex=3,col="#B3B9DF",main="MDS plot",xlim=c(XMIN,XMAX))
+plotMDS(mdsDFT1,pch=17,cex=3,col="#B3B9DF",main="MDS plot",xlim=c(XMIN,XMAX))
 text(mdsDFT1,labels=colnames(y_DFT1))
 mtext("DFT1")
 
 mdsDFT2 <- plotMDS(y_DFT2,plot=FALSE)
-plotMDS(mdsDFT2,pch=19,cex=3,col="#DDAFB7",main="MDS plot",xlim=c(XMIN,XMAX))
+plotMDS(mdsDFT2,pch=17,cex=3,col="#DDAFB7",main="MDS plot",xlim=c(XMIN,XMAX))
 text(mdsDFT2, labels=colnames(y_DFT2))
 mtext("DFT2")
 
 mds_biopsy <- plotMDS(y_biopsy,plot=FALSE)
-plotMDS(mds_biopsy,pch=19,cex=3,col=cols,main="Tumour biopsies",xlim=c(XMIN,XMAX))
+plotMDS(mds_biopsy,pch=17,cex=3,col=cols,main="Tumour biopsies",xlim=c(XMIN,XMAX))
 text(mds_biopsy,labels=colnames(y_biopsy))
 mtext("Tumour biopsies: blue=DFT1, pink=DFT2")
 
 mds_cline <- plotMDS(y_cline,plot=FALSE)
-plotMDS(mds_cline,pch=19,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
+plotMDS(mds_cline,pch=17,cex=3,col=cols,main="MDS plot",xlim=c(XMIN,XMAX))
 text(mds_cline,labels=colnames(y_cline))
 mtext("Cell lines: blue=DFT1, pink=DFT2")
 
@@ -294,8 +269,7 @@ mtext("Cell lines: blue=DFT1, pink=DFT2")
 
 ## DESeq2
 
-Sum replicates then run differential expression analysis.
-For now, ignore alignment on old genome and cell line data.
+Sum replicates then run differential expression analysis. For now, ignore alignment on old genome and cell line data.
 
 ```{r, de}
 
@@ -335,7 +309,6 @@ length(sig2_dn)
 
 ```{r,deviz}
 
-maplot(dge2,"Tumour biopsies")
 
 make_volcano(dge2,"Tumour biopsies")
 
@@ -349,14 +322,6 @@ write.table(dge2,file="dge3.tsv",sep="\t")
 ```
 
 ```{r,de2vizheatmap,fig.dim = c(4, 6)}
-
-# heatmap
-mx <- sig[,7:ncol(sig)]
-mx <- head(mx,30)
-colfunc <- colorRampPalette(c("blue", "white", "red"))
-heatmap.2(as.matrix(mx),trace="none",scale="row",
-  col=colfunc(25),ColSideColors=cols[3:6],mar=c(8,14),
-  cexRow=0.7,cexCol=1)
 
 # top 20 up & top 20 down
 sig <- sig[order(sig$log2FoldChange, decreasing=TRUE),]
@@ -380,18 +345,41 @@ rownames(mean) <- rownames(top)
 colnames(mean) <- "AveExpr"
 
 
-col_logFC <- col_logFC <- colorRamp2(c(-20,0,20), hcl_palette = "Blue-Red 2")
-#col_AveExpr <- colorRamp2(c(quantile(mean)[1], quantile(mean)[4]), c("white","red"))
+col_logFC <- colorRamp2(c(-20,0,20), hcl_palette = "Blue-Red 2")
+custom_heatmap <- function(zscore, fc, aveexpr, title) {
+  h1 <- Heatmap(zscore, cluster_rows = F,
+              column_labels = colnames(zscore), name="Z-score",
+              cluster_columns = T, 
+              column_names_gp = gpar(fontsize = 7, fontface="bold"),
+              col=colorRamp2(c(-1.5,0,1.5), hcl_palette = "Blue-Red 2"),
+              heatmap_legend_param = list(title = "Z-score", at = seq(-1.5, 1.5, 0.5)))
+  h2 <- Heatmap(fc, row_labels = rownames(fc), row_names_gp = gpar(fontsize = 6),
+              cluster_rows = F, name="logFC", col = col_logFC,column_names_gp = gpar(fontsize =7,fontface="bold"),
+              cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                grid.text(round(as.numeric(fc[i, j],2),2), x, y,gp=gpar(fontsize=6))
+              }, column_title = title, 
+              heatmap_legend_param = list(title = "logFC", at = seq(-20, 20, 10)))
+
+  h <- h1 + h2 
+  h
+}
 
 ha <- HeatmapAnnotation(summary=anno_summary(gp=gpar(fill="#D5D7E2"),height=unit(2, "cm")))
 
-custom_heatmap(mx.scaled, log2FC, mean, title = "Top 40 DEGs - Tumour biopsies")
+rownames(mx.scaled) <- gsub("^.{0,21}", "", rownames(mx.scaled))
+rownames(log2FC) <- gsub("^.{0,21}", "", rownames(log2FC))
+
+
+top40 <- custom_heatmap(mx.scaled, log2FC, mean, title = "Tumour biopsies")
+
+top40
+
+saveRDS(top40, "top40_biopsies.RDS")
 
 ```
 ## Enrichment analysis
 
-Need to get human homologs of these genes.
-These were obtained from Ensembl v109 biomart (website).
+Need to get human homologs of these genes. These were obtained from Ensembl v109 biomart.
 
 ```{r}
 
@@ -411,7 +399,7 @@ saveRDS(gt, "~/dftd_RNAseq_annelise/dge/gt.rds")
 
 ```
 
-Now run mitch for DGE2. The pathways are sourced from Reactome 7th July 2023.
+Now run mitch for DGE2. The pathways are sourced from Reactome 7th July 2023. Plot significant pathways, top 20 and metabolism related pathways.
 
 ```{r,mitch1, fig.dim = c(12, 22)}
 
@@ -463,89 +451,49 @@ ggplot(metabo1 , aes(x = s.dist, y = reorder(set, s.dist), color = p.adjustANOVA
 
 ```
 
-KEGG gene sets were sourced from MSigDb on 14 September 2023.
+## Visualisation
 
-```{r, mitch4}
+Heatmaps. First plot enriched pathways, then plot pathways of interest for which experimental data is available.
 
-genesets2 <- gmt_import("../ref/c2.cp.kegg.v2023.1.Hs.symbols.gmt.txt")
 
-res2 <- mitch_calc(m2, genesets2, priority="effect",cores=16)
-
-if ( !file.exists("mitch_biopsies_kegg.html") ) {
-  mitch_report(res2, "mitch_biopsies_kegg.html")
-}
-
-top <- subset(res2$enrichment_result,p.adjustANOVA<0.05)
-
-topup <- head(subset(top,s.dist>0),20)
-
-topup %>%
-  kbl(caption="Top 20 upregulated pathways") %>%
-  kable_paper("hover", full_width = F)
-
-topdn <- head(subset(top,s.dist<0),20)
-
-topdn %>%
-  kbl(caption="Top 20 downregulated pathways") %>%
-  kable_paper("hover", full_width = F)
-
-top2 <- rbind(head(topup,10),head(topdn,10))
-top2 <- top2[order(-top2$s.dist),]
-par(mar=c(5,15,5,2))
-
-barplot(rev(abs(top2$s.dist)),horiz=TRUE,las=1,names.arg=rev(top2$set),
-  main="Top KEGG Pathways",cex.names=0.6,xlab="Enrichment Score",
-  col=c(rep("blue",nrow(head(topdn,10))),rep("red",nrow(head(topup,10)))),
-  xlim=c(0,0.8))
-
-kegg_metabosets <- gmt_import("../ref/gsea/gsea_KEGG.gmt")
-
-metabo2 <- filter(top, set %in% names(kegg_metabosets))
-metabo2_ord <- metabo2[order(metabo2$s.dist),]
-metabo2_ord$s.dist <- abs(metabo2_ord$s.dist)
-
-barplot(metabo2_ord$s.dist,horiz=TRUE,las=1,names.arg=metabo2_ord$set,
-  main="Enriched Metabolic Pathways - KEGG",cex.names=0.6,xlab="Enrichment Score",
-  col=rev(c(rep("red",nrow(filter(metabo2, s.dist > 0))),rep("blue",nrow(filter(metabo2, s.dist < 0))))),
-  xlim=c(0,0.8))
-
-```
-Heatmaps for most enriched pathways in cell lines, on biopsy data.
-
-```{r, complexheatmap13}
+```{r, complexheatmap13, fig.dim = c(4, 6)}
 
 # see https://www.youtube.com/watch?v=ht1r34-ifVI for reference
 
+hm3 <- data.frame(ENSSHAG=hm2[,2],geneID=hm2[,3])
+dge2 <- dge
+dge2$ensembl <- rownames(dge2)
+split <- strsplit(dge2$ensembl, split = " ")
+ensembl <- c()
+gene_name <- c()
+for (i in 1:length(split)){
+  ensembl <- append(ensembl, split[[i]][1]) 
+  gene_name <- append(gene_name, split[[i]][2]) 
+}
+dge2$ensembl <- ensembl
+dge2$gene_name <- gene_name
+
 dge3 <- dge2
 
-# find corresponding human genes to devil ENS IDs
-dge2$ENSSHAG <- rownames(dge2)
-hm3 <- data.frame(ENSSHAG=hm2[,2],geneID=hm2[,3])
-dge2 <- left_join(dge2, hm3, by="ENSSHAG")
-dge2 <- unite(dge2,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ", remove=F)
-dge2 <- unique(dge2)
-rownames(dge2) <- dge2$ENSSHAG_geneID
-
 # only plot significant DEGs
-dge2sig <- filter(dge2, padj < 0.05)
-dge2sig <- dge2sig[order(dge2sig$log2FoldChange, decreasing=TRUE),]
+dge3sig <- filter(dge3, padj < 0.05)
+dge3sig <- dge3sig[order(dge3sig$log2FoldChange, decreasing=TRUE),]
 
-mx <- dge2sig[,7:ncol(dge2sig)] # get normalised counts
+mx <- dge3sig[,7:ncol(dge3sig)] # get normalised counts
  
 mx.scaled <- t(apply(mx[,1:4], 1, scale)) # center and scale each column (Z-score)
-colnames(mx.scaled) <- colnames(mx[,1:4])
 colnames(mx.scaled) <- c("DFT1 1", "DFT1 2", "DFT2 1", "DFT2 2")
-log2FC <- as.matrix(dge2sig$log2FoldChange)
-rownames(log2FC) <- rownames(dge2sig)
+log2FC <- as.matrix(dge3sig$log2FoldChange)
+rownames(log2FC) <- rownames(dge3sig)
 colnames(log2FC) <- "logFC"
-mean <- as.matrix(dge2sig$baseMean)
-rownames(mean) <- rownames(dge2sig)
+mean <- as.matrix(dge3sig$baseMean)
+rownames(mean) <- rownames(dge3sig)
 colnames(mean) <- "AveExpr"
 
-col_logFC <- col_logFC <- colorRamp2(c(-20,0,20), hcl_palette = "Blue-Red 2")
+col_logFC <- colorRamp2(c(-20,0,20), hcl_palette = "Blue-Red 2")
 #col_AveExpr <- colorRamp2(c(quantile(mean)[1], quantile(mean)[4]), c("white","red"))
 
-ha <- HeatmapAnnotation(summary=anno_summary(gp=gpar(fill="#D5D7E2"),height=unit(2, "cm")))
+ha <- HeatmapAnnotation(summary=anno_summary(gp=gpar(fill="#D5D7E2"),height=unit(1.5, "cm")))
 
 # ----- Top DEGs in REACTOME metabolic pathways ------
 
@@ -557,6 +505,19 @@ temp <- c() # get ENSSHAG and gene ID
 for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
 metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+# collapse transcript IDs to gene IDs
+
+rownames(mx.scaled) <- sub('\\..*\\s', ' ', rownames(mx.scaled))
+rownames(log2FC) <- sub('\\..*\\s', ' ', rownames(log2FC))
+rownames(mean) <- sub('\\..*\\s', ' ', rownames(mean))
+dge3$ensembl <- sub('\\..*', '', dge3$ensembl)
+rownames(dge3) <- sub('\\..*\\s', ' ', rownames(dge3))
+
+rownames(mx.scaled) <- gsub("^.{0,19}", "", rownames(mx.scaled))
+rownames(log2FC) <- gsub("^.{0,19}", "", rownames(log2FC))
+
+metabolism <- gsub("^.{0,19}", "", metabolism)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
 metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
 metAE <- subset(mean, rownames(mean) %in% metabolism)
@@ -567,16 +528,16 @@ met40FC <- as.matrix(c(head(metFC,20),tail(metFC,20)))
 rownames(met40FC) <- rownames(met40)
 colnames(met40FC) <- "logFC"
 met40AE <- as.matrix(c(head(metAE,20),tail(metAE,20)))
-rownames(met40AE) <- rownames(met40)
-colnames(met40AE) <- "AveExpr"
+#rownames(met40AE) <- rownames(met40)
+#colnames(met40AE) <- "AveExpr"
 
 custom_heatmap(met40, met40FC, met40AE, title = "TOP 40 - REACTOME metabolism")
 
 # ----- All DEGs in REACTOME metabolic pathways ------
 
-dge2_metabo_reactome <- filter(dge2, geneID %in% metabo)
+dge3_metabo_reactome <- filter(dge3, gene_name %in% metabo)
 
-make_volcano(dge2_metabo_reactome, "Biopsies - Metabolism genes - REACTOME")
+make_volcano(dge3_metabo_reactome, "Cell lines - Metabolism genes - REACTOME")
 
 # ----- Individual TOP REACTOME metabolic pathways -----
 
@@ -591,7 +552,9 @@ for(i in 1:length(pathways)){
   temp <- c() # get ENSSHAG and gene ID
   for(k in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[k]))}
   metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
-
+  
+  metabolism <- gsub("^.{0,19}", "", metabolism)
+  
   met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
   metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
   metAE <- subset(mean, rownames(mean) %in% metabolism)
@@ -600,6 +563,7 @@ for(i in 1:length(pathways)){
   heatmaps[[i]] <- custom_heatmap(met, metFC, metAE, title = paste(pathways[i]))
   
 }
+
 ```
 
 ```{r, complexheatmap2, fig.dim = c(4, 2.75)}
@@ -608,6 +572,8 @@ print(heatmaps[[1]])
 
 ```{r, complexheatmap3, fig.dim = c(4, 2.75)}
 print(heatmaps[[2]])
+
+saveRDS(heatmaps[[2]], "cyst_b.rds")
 ```
 
 ```{r, complexheatmap4, fig.dim = c(4, 3)}
@@ -628,6 +594,8 @@ print(heatmaps[[6]])
 
 ```{r, complexheatmap8, fig.dim = c(4, 5.5)}
 print(heatmaps[[7]])
+
+saveRDS(heatmaps[[7]], "nucl_b.rds")
 ```
 
 ```{r, complexheatmap9, fig.dim = c(4, 3.5)}
@@ -644,33 +612,77 @@ print(heatmaps[[9]])
 mm <- filter(hm3, geneID %in% genesets[["Glycolysis"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
 metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Glycolysis")
+glyco_p <- custom_heatmap(met, metFC, title = "Tumour biopsies")
+
+glyco_p
+
+saveRDS(glyco_p, "glyco_p2.rds")
+```
+
+```{r, complexheatmap121, fig.dim = c(4, 4)}
+# ----- Other interesting pathways REACTOME -----
+
+mm <- filter(hm3, geneID %in% genesets[["Cholesterol biosynthesis"]])
+mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+
+mm <- gsub("^.{0,19}", "", mm)
+
+met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
+metFC <- subset(log2FC, rownames(log2FC) %in% mm)
+
+glyco_p <- custom_heatmap(met, metFC, title = "Cholesterol biosynthesis")
+
+glyco_p
+
+saveRDS(glyco_p, "chol_b.rds")
+```
+
+```{r, complexheatmap1211, fig.dim = c(4, 4)}
+# ----- Other interesting pathways REACTOME -----
+
+mm <- filter(hm3, geneID %in% genesets[["Sulfur amino acid metabolism"]])
+mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
+
+mm <- gsub("^.{0,19}", "", mm)
+
+met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
+metFC <- subset(log2FC, rownames(log2FC) %in% mm)
+
+glyco_p <- custom_heatmap(met, metFC, title = "Sulfur amino acid metabolism")
+
+glyco_p
+
+saveRDS(glyco_p, "sulf_b.rds")
 ```
 
 ```{r, complexheatmap14, fig.dim = c(4, 6)}
 mm <- filter(hm3, geneID %in% genesets[["Formation of ATP by chemiosmotic coupling"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+#mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-# custom_heatmap(met, metFC, metAE, title = "Formation of ATP by chemiosmotic coupling")
+custom_heatmap(met, metFC, title = "Formation of ATP by chemiosmotic coupling")
 ```
 
 ```{r, complexheatmap15, fig.dim = c(4, 2.5)}
 mm <- filter(hm3, geneID %in% genesets[["Citric acid cycle (TCA cycle)"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Citric acid cycle (TCA cycle)")
+custom_heatmap(met, metFC, title = "Citric acid cycle (TCA cycle)")
 ```
 
 ```{r, complexheatmap16, fig.dim = c(4, 3.5)}
@@ -678,22 +690,24 @@ custom_heatmap(met, metFC, metAE, title = "Citric acid cycle (TCA cycle)")
 mm <- filter(hm3, geneID %in% genesets[["Respiratory electron transport, ATP synthesis by chemiosmotic coupling, and heat production by uncoupling proteins."]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Respiratory electron transport, \n ATP synthesis by chemiosmotic coupling, \n and heat production by uncoupling proteins.")
+custom_heatmap(met, metFC, title = "Respiratory electron transport, \n ATP synthesis by chemiosmotic coupling, \n and heat production by uncoupling proteins.")
 ```
 
 ```{r, complexheatmap17, fig.dim = c(4, 4)}
 mm <- filter(hm3, geneID %in% genesets[["DNA Repair"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-#custom_heatmap(met, metFC, metAE, title = "DNA Repair")
+custom_heatmap(met, metFC, title = "DNA Repair")
 
 ```
 
@@ -701,44 +715,53 @@ metAE <- subset(mean, rownames(mean) %in% mm)
 mm <- filter(hm3, geneID %in% genesets[["Cholesterol biosynthesis"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Cholesterol biosynthesis")
+custom_heatmap(met, metFC, title = "Cholesterol biosynthesis")
 ```
 
 ```{r, complexheatmap19, fig.dim = c(4, 3.5)}
 mm <- filter(hm3, geneID %in% genesets[["Detoxification of Reactive Oxygen Species"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
 metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Detoxification of Reactive Oxygen Species")
+ROS_p2 <- custom_heatmap(met, metFC, metAE, title = "Tumour biopsies")
+
+ROS_p2 
+
+saveRDS(ROS_p2, "ROS_p2.rds")
 ```
 
 ```{r, complexheatmap20, fig.dim = c(4, 2.75)}
 mm <- filter(hm3, geneID %in% genesets[["Pentose phosphate pathway"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Pentose phosphate pathway")
+custom_heatmap(met, metFC, title = "Pentose phosphate pathway")
 ```
 
 ```{r, complexheatmap21, fig.dim = c(4, 5.5)}
 mm <- filter(hm3, geneID %in% genesets[["Fatty acid metabolism"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Fatty acid metabolism")
+custom_heatmap(met, metFC, title = "Fatty acid metabolism")
 ```
 
 ```{r, complexheatmap22, fig.dim = c(4, 2.5)}
@@ -746,198 +769,17 @@ custom_heatmap(met, metFC, metAE, title = "Fatty acid metabolism")
 mm <- filter(hm3, geneID %in% genesets[["Glutamate and glutamine metabolism"]])
 mm <- c(t(unite(mm,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+mm <- gsub("^.{0,19}", "", mm)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% mm)
 metFC <- subset(log2FC, rownames(log2FC) %in% mm)
-metAE <- subset(mean, rownames(mean) %in% mm)
 
-custom_heatmap(met, metFC, metAE, title = "Glutamate and glutamine metabolism")
+custom_heatmap(met, metFC, title = "Glutamate and glutamine metabolism")
 ```
-
-```{r, complexheatmap23, fig.dim = c(4, 5.5)}
-
-# ----- Top DEGs in KEGG metabolic pathways ------
-
-metabo <- c()
-for(i in 1:length(genesets2)){metabo <- c(metabo,genesets2[[i]])}
-metabo <- unique(metabo)
-
-temp <- c()
-for(i in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[i]))}
-metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
-
-met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
-metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
-metAE <- subset(mean, rownames(mean) %in% metabolism)
-
-# top 20 up & down
-met40 <- rbind(head(met,20),tail(met,20))
-met40FC <- as.matrix(c(head(metFC,20),tail(metFC,20)))
-rownames(met40FC) <- rownames(met40)
-colnames(met40FC) <- "logFC"
-met40AE <- as.matrix(c(head(metAE,20),tail(metAE,20)))
-rownames(met40AE) <- rownames(met40)
-colnames(met40AE) <- "AveExpr"
-
-custom_heatmap(met40, met40FC, met40AE, title = "TOP 40 - KEGG metabolism")
-
-# ----- All DEGs in KEGG metabolic pathways ------
-
-dge2_metabo_kegg <- filter(dge2, geneID %in% metabo)
-
-make_volcano(dge2_metabo_kegg, "Biopsies - Metabolism genes - KEGG")
-
-# ----- Individual TOP KEGG metabolic pathways -----
-
-pathways <- metabo2$set
-
-for(i in 1:length(pathways)){
-  
-  metabo <- c() # get all names of genes involved in metabolism
-  for(j in 1:length(genesets2)){metabo <- c(metabo,genesets2[[pathways[i]]])}
-  metabo <- unique(metabo) # get rid of duplicates
-
-  temp <- c() # get ENSSHAG and gene ID
-  for(k in 1:length(metabo)){temp <- rbind(temp,filter(hm3, geneID==metabo[k]))}
-  metabolism <- c(t(unite(temp,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
-
-  met <- subset(mx.scaled, rownames(mx.scaled) %in% metabolism)
-  metFC <- subset(log2FC, rownames(log2FC) %in% metabolism)
-  metAE <- subset(mean, rownames(mean) %in% metabolism)
-
-  # react_pathw[[i]] <- custom_heatmap(met, metFC, metAE, title = paste(pathways[i], "- REACTOME"))
-  print(custom_heatmap(met, metFC, metAE, title = paste(pathways[i], "- KEGG")))
-  
-}
-
-```
-```{r}
-seb_genes <- filter(dge2, geneID %in% c("LICAM","CXCL13","GDNF", "NGF", "NRTN", "ARTN", "GFRA1", "NTF3", "CCL2", "CX3CL1"))
-
-sig <- subset(seb_genes,padj<0.05)
-
-# heatmap
-mx <- sig[,7:10]
-mx <- head(mx,30)
-colfunc <- colorRampPalette(c("blue", "white", "red"))
-heatmap.2(as.matrix(mx),trace="none",scale="row",
-  col=colfunc(25),mar=c(5,14),
-  cexRow=0.8,cexCol=0.7)
-```
-
-```{r, Venn data}
-
-allgenes <- rownames(dge)
-sigdegs <- rownames(sig2)
-updegs <- sig2_up
-dndegs <- sig2_dn
-
-metreactgenes <- rownames(dge2_metabo_reactome)
-metsigreactdegs <- rownames(filter(dge2_metabo_reactome, padj < 0.05))
-metsigreactupdegs <- rownames(filter(filter(dge2_metabo_reactome, padj < 0.05),log2FoldChange > 0))
-metsigreactdndegs <- rownames(filter(filter(dge2_metabo_reactome, padj < 0.05),log2FoldChange < 0))
-metkegggenes <- rownames(dge2_metabo_kegg)
-metsigkeggdegs <- rownames(filter(dge2_metabo_kegg, padj < 0.05))
-metsigkeggupdegs <- rownames(filter(filter(dge2_metabo_kegg, padj < 0.05),log2FoldChange > 0))
-metsigkeggdndegs <- rownames(filter(filter(dge2_metabo_kegg, padj < 0.05),log2FoldChange < 0))
-
-venn_biopsies <- list(allgenes=allgenes, sigdegs=sigdegs, updegs=updegs, dndegs=dndegs, metreactgenes=metreactgenes,
-                      metsigreactdegs=metsigreactdegs, metsigreactupdegs=metsigreactupdegs, metsigreactdndegs=metsigreactdndegs,
-                      metkegggenes=metkegggenes, metsigkeggdegs=metsigkeggdegs, metsigkeggupdegs=metsigkeggupdegs,
-                      metsigkeggdndegs=metsigkeggdndegs)
-saveRDS(venn_biopsies, file = "venn_biopsies.rds")
-saveRDS(dge3, "~/dftd_RNAseq_annelise/dge/dge_biopsies.rds")
-
-# venn.diagram(
-#   x = list(alldegs, updegs, downdegs),
-#   category.names = c("All DEGs" , "Up", "Down"),
-#   filename = 'updown_venn_diagramm.png',
-#   output=TRUE
-# )
-
-```
-
-#### Term-gene graphs
-
-```{r, tgg}
-
-degenes <- data.frame(FC=dge2sig$log2FoldChange, ID=dge2sig$geneID)
-
-paths <- c("Glycolysis",
-           "Formation of ATP by chemiosmotic coupling",
-           "Citric acid cycle (TCA cycle)",
-           "Respiratory electron transport",
-           "DNA Double-Strand Break Repair",
-           "Detoxification of Reactive Oxygen Species",
-           "Pentose phosphate pathway",
-           "Fatty acid metabolism",
-           "Glutamate and glutamine metabolism")
-
-path_list <- list()
-
-for(i in 1:nrow(metabo1)){
-  path_temp <- metabo1$set[i]
-  genes_temp <- genesets[[path_temp]]
-  list_temp <- list(intersect(genes_temp,degenes$ID))
-  path_list <- append(path_list, list_temp)
-}
-
-names(path_list) <- metabo1$set
-
-degenes <- na.omit(data.frame(ID=dge2sig$geneID,FC=dge2sig$log2FoldChange))
-
-mydf_2 <- degenes %>% group_by(ID) %>% summarize(FC=mean(FC))
-mydf_2 <- data.frame(mydf_2)
-mydf_2 <- mydf_2[-1,]
-mydf_3 <- mydf_2[,-1]
-
-FC <- setNames(mydf_3, mydf_2$ID)
-
-cnetplot(path_list, foldChange=FC) 
-
-
-
-path_list <- list()
-
-for(i in 1:length(paths)){
-  path_temp <- paths[i]
-  genes_temp <- genesets[[path_temp]]
-  list_temp <- list(intersect(genes_temp,degenes$ID))
-  path_list <- append(path_list, list_temp)
-}
-
-names(path_list) <- paths
-
-degenes <- na.omit(data.frame(ID=dge2sig$geneID,FC=dge2sig$log2FoldChange))
-
-mydf_2 <- degenes %>% group_by(ID) %>% summarize(FC=mean(FC))
-mydf_2 <- data.frame(mydf_2)
-mydf_2 <- mydf_2[-1,]
-mydf_3 <- mydf_2[,-1]
-
-FC <- setNames(mydf_3, mydf_2$ID)
-
-# TODO: show TCA+ETC and FOA+ROS
-cnetplot(path_list, foldChange=FC, showCategory = 3) 
-
-```
-
-```{r, visualise pathways}
-data("sbgn.xmls")
-data(pathways.info)
-input.pathways <- data.frame(findPathways(c(names(path_list),metabo1$set)))
-SBGNview.obj <- SBGNview(
-          gene.data = FC, 
-          gene.id.type = "SYMBOL",
-          input.sbgn = input.pathways$pathway.id,
-          output.file = "biopsies", 
-          output.formats =  c("svg"),
-          min.gene.value = -10,
-          max.gene.value = 10)
-print(SBGNview.obj)
-```
-
 
 ## Adding custom gene sets
+
+Two custom gene sets were added to the previous analysis containing cell competition & metastasis related genes based on a literature search. 
 
 ```{r, customgs, fig.dim = c(4, 2.75)}
 
@@ -958,32 +800,42 @@ genesets$"Metastasis" <- unique(metastasis_genes$Gene.name)
 genesets$"Metastasis - promotors" <- unique(filter(metastasis_genes, Type == "Metastasis_promotor")$Gene.name)
 genesets$"Metastasis - suppressors" <- unique(filter(metastasis_genes, Type == "Metastasis_supressor")$Gene.name)
 
-# gsea
 res_custom <- mitch_calc(m2, genesets, priority="effect",cores=16)
 
 if ( !file.exists("mitch_custom_patchett.html") ) {
   mitch_report(res_custom, "mitch_custom_patchett.html")
 }
 
-
 cc <- filter(hm3, geneID %in% genesets[["Cell Competition"]])
 cc <- c(t(unite(cc,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+cc <- gsub("^.{0,19}", "", cc)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% cc)
 metFC <- subset(log2FC, rownames(log2FC) %in% cc)
-metAE <- subset(mean, rownames(mean) %in% cc)
 
-custom_heatmap(met, metFC, metAE, title = "Cell competition")
+custom_heatmap(met, metFC, title = "Cell competition")
 ```
 
 ```{r, customgs2, fig.dim = c(4, 4.5)}
 meta <- filter(hm3, geneID %in% genesets[["Metastasis"]])
 meta <- c(t(unite(meta,"ENSSHAG_geneID", ENSSHAG:geneID, sep=" ")))
 
+meta <- gsub("^.{0,19}", "", meta)
+
 met <- subset(mx.scaled, rownames(mx.scaled) %in% meta)
 metFC <- subset(log2FC, rownames(log2FC) %in% meta)
-metAE <- subset(mean, rownames(mean) %in% meta)
 
-custom_heatmap(met, metFC, metAE, title = "Metastasis")
+custom_heatmap(met, metFC, title = "Metastasis")
+
+```
+
+## Session information
+
+For reproducibility.
+
+```{r,session}
+
+sessionInfo()
 
 ```
