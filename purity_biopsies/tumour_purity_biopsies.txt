@@ -1,0 +1,32 @@
+sample no ERR2804403
+CAll 0.335543
+CDel 0.272886
+rho .813
+sample no ERR2804404
+CAll 0.338505
+CDel 0.24655
+rho .728
+sample no ERR2804405
+CAll 0.341632
+CDel 0.218646
+rho .640
+sample no ERR2804406
+CAll 0.346386
+CDel 0.278006
+rho .802
+sample no ERR2804407
+CAll 0.296613
+CDel 0.22442
+rho .756
+sample no ERR2804408
+CAll 0.297922
+CDel 0.222029
+rho .745
+sample no ERR2804409
+CAll 0.356655
+CDel 0.30271
+rho .848
+sample no ERR2804410
+CAll 0.357544
+CDel 0.346841
+rho .970

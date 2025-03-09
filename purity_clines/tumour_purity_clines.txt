@@ -1,0 +1,76 @@
+sample no 6180766
+CAll 0.416635
+CDel 0.292649
+rho .702
+sample no 6180767
+CAll 0.424098
+CDel 0.330053
+rho .778
+sample no 6180768
+CAll 0.416169
+CDel 0.319392
+rho .767
+sample no 6180769
+CAll 0.46932
+CDel 0.377913
+rho .805
+sample no 6180770
+CAll 0.463449
+CDel 0.39499
+rho .852
+sample no 6180771
+CAll 0.488272
+CDel 0.414179
+rho .848
+sample no 6180772
+CAll 0.412695
+CDel 0.307597
+rho .745
+sample no 6180773
+CAll 0.415434
+CDel 0.269623
+rho .649
+sample no 6180774
+CAll 0.422376
+CDel 0.320394
+rho .758
+sample no 6180775
+CAll 0.489439
+CDel 0.396534
+rho .810
+sample no 6180776
+CAll 0.469566
+CDel 0.439485
+rho .935
+sample no 6180777
+CAll 0.51389
+CDel 0.433654
+rho .843
+sample no 6180778
+CAll 0.420118
+CDel 0.325427
+rho .774
+sample no 6180779
+CAll 0.408427
+CDel 0.305576
+rho .748
+sample no 6180780
+CAll 0.422635
+CDel 0.309703
+rho .732
+sample no 6180781
+CAll 0.468847
+CDel 0.368539
+rho .786
+sample no 6180782
+CAll 0.47562
+CDel 0.424494
+rho .892
+sample no 6180783
+CAll 0.495531
+CDel 0.425377
+rho .858
+sample no DEA5-4N
+CAll 
+CDel 
+rho 
